@@ -11,6 +11,12 @@ export type Preview = {
   motivo?: string;
 };
 
+export type AplicarResult = Preview & {
+  status: "OK" | "ERRO";
+  destino_final?: string;
+  erro?: string;
+};
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_BASE}${url}`, {
     headers: { "Content-Type": "application/json" },
@@ -34,7 +40,7 @@ export const api = {
     });
   },
   aplicar(plano: Preview[]) {
-    return http<any>("/organizador/aplicar", {
+    return http<AplicarResult[]>("/organizador/aplicar", {
       method: "POST",
       body: JSON.stringify({ plano }),
     });
