@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { api, Empresa, Unidade, Preview } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import type { Empresa, Unidade, Preview } from "@/lib/api";
 
 const BASE_DIR = import.meta.env.VITE_BASE_DIR || "B:\\\\NOVO00_Nossos_Clientes";
 
@@ -12,14 +13,14 @@ export default function Importar() {
   const [preview, setPreview] = useState<Preview[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    api.listarEmpresas().then(setEmpresas).catch((e) => alert(String(e)));
-  }, []);
+    useEffect(() => {
+    api.listarEmpresas().then(setEmpresas).catch((e: unknown) => alert(String(e)));
+    }, []);
 
-  useEffect(() => {
+    useEffect(() => {
     if (!empresaId) { setUnidades([]); return; }
-    api.listarUnidades(Number(empresaId)).then(setUnidades).catch((e) => alert(String(e)));
-  }, [empresaId]);
+    api.listarUnidades(Number(empresaId)).then(setUnidades).catch((e: unknown) => alert(String(e)));
+    }, [empresaId]);
 
   const arquivos = useMemo(
     () => pathsText.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
