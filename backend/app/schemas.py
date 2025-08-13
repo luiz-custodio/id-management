@@ -4,6 +4,11 @@ from pydantic import BaseModel, Field, ConfigDict
 # EMPRESA
 class EmpresaCreate(BaseModel):
     nome: str = Field(..., examples=["CEOLIN"])
+    unidade_001_nome: str = Field(
+        ...,
+        description="Nome da primeira unidade (id_unidade=001)",
+        examples=["Matriz"],
+    )
 
 class EmpresaOut(BaseModel):
     id: int

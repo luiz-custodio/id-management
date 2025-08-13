@@ -1,2 +1,38 @@
 venv/
 .venv/
+
+# Arquivos de backup e ZIPs do projeto
+*.zip
+id-management_*.zip
+
+# Base de dados local
+backend/ids.db
+backend/*.db
+
+# Arquivos temporários e cache
+*.log
+*.pyc
+*.pyo
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configurações locais
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+.vs/
+
+# Node.js (se houver frontend)
+node_modules/
+dist/
+build/
