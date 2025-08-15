@@ -1,10 +1,24 @@
-import Importar from "@/pages/Importar";
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Importar from './pages/Importar';
+import TesteIntegracao from './pages/TesteIntegracao';
 
-export default function App() {
+function App() {
   return (
-    <div className="min-h-screen p-6">
-      <h1 className="text-2xl font-semibold mb-4">Importação de Arquivos</h1>
-      <Importar />
-    </div>
-  );
+    <Router>
+      <div className="App">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/importar" element={<Importar />} />
+          <Route path="/teste" element={<TesteIntegracao />} />
+        </Routes>
+      </div>
+    </Router>
+  )
 }
+
+export default App
