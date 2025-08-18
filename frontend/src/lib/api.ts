@@ -23,9 +23,17 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   return r.json();
 }
 
+const API_URL = "http://localhost:8000";
+
 export const api = {
   listarEmpresas() {
     return http<Empresa[]>("/empresas");
+  },
+  criarEmpresa(nome: string, unidade_001_nome: string) {
+    return http<Empresa>("/empresas", {
+      method: "POST",
+      body: JSON.stringify({ nome, unidade_001_nome }),
+    });
   },
   listarUnidades(empresaId: number) {
     return http<Unidade[]>(`/unidades?empresa_id=${empresaId}`);
@@ -41,5 +49,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ plano }),
     });
+  },
+  async sincronizarEmpresas(basePath: string): Promise<{ synced: number; updated: number; message: string }> {
+    const response = await fetch(`${API_URL}/empresas/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_path: basePath }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || "Erro ao sincronizar empresas");
+    }
+    return response.json();
   },
 };
