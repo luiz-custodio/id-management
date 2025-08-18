@@ -1,20 +1,14 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Importar from './pages/Importar';
-import TesteIntegracao from './pages/TesteIntegracao';
+// Rotas simplificadas: apenas página de Empresas por enquanto.
+import EmpresasPage from './pages/Empresas';
 
 function App() {
   return (
     <Router>
       <div className="App">
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/importar" element={<Importar />} />
-          <Route path="/teste" element={<TesteIntegracao />} />
+          <Route path="/" element={<EmpresasPage />} />
+          <Route path="/empresas" element={<EmpresasPage />} />
         </Routes>
       </div>
     </Router>

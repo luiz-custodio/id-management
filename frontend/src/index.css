@@ -102,21 +102,48 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Animação de slide down */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out;
+}
+
+/* Animação de fade in e slide down */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.3s ease-out;
 }
 
 /* Custom scrollbar */
@@ -147,4 +174,41 @@
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(75, 85, 99, 0.7);
+}
+
+/* Select customizado com animação suave */
+select {
+  transition: all 0.3s ease;
+}
+
+select:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Animação para options (funciona em alguns navegadores) */
+select option {
+  padding: 8px;
+  transition: background-color 0.2s ease;
+}
+
+select option:hover {
+  background-color: #475569;
+}
+
+/* Remove a seta padrão em navegadores webkit */
+select::-webkit-scrollbar {
+  width: 8px;
+}
+
+select::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+select::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+select::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
