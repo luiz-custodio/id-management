@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func
@@ -53,47 +53,51 @@ def get_db():
 async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(get_db)):
     """
     Cria Empresa com id_empresa sequencial (0001, 0002, ...).
-    Também cria automaticamente a Unidade '001' com o nome informado em `unidade_001_nome`.
+    Também cria automaticamente todas as unidades informadas na lista.
     """
     novo_id = next_id_empresa(db)
     emp = models.Empresa(id_empresa=novo_id, nome=payload.nome.strip())
     db.add(emp)
-    db.flush()  # garante emp.id para a FK da unidade antes do commit
+    db.flush()  # garante emp.id para a FK das unidades antes do commit
 
-    und = models.Unidade(
-        id_unidade="001",
-        nome=payload.unidade_001_nome.strip(),
-        empresa_id=emp.id
-    )
-    db.add(und)
+    # Cria todas as unidades sequencialmente
+    for i, nome_unidade in enumerate(payload.unidades, 1):
+        id_unidade = f"{i:03d}"  # 001, 002, 003, etc.
+        und = models.Unidade(
+            id_unidade=id_unidade,
+            nome=nome_unidade.strip(),
+            empresa_id=emp.id
+        )
+        db.add(und)
+        db.flush()  # Para garantir que a unidade foi criada antes de criar as pastas
+
+        # Cria estrutura de pastas para esta unidade
+        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {novo_id}"
+        
+        # Garante que a pasta base cliente existe
+        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+        
+        # Cria pasta da empresa se não existe
+        empresa_folder.mkdir(exist_ok=True)
+        
+        # Cria pasta da unidade
+        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
+        unidade_folder.mkdir(exist_ok=True)
+        
+        # Cria todas as subpastas padrão
+        for subpasta in SUBPASTAS_PADRAO:
+            subpasta_path = unidade_folder / subpasta
+            subpasta_path.mkdir(exist_ok=True)
+            
+            # Se for CCEE - DRI, cria subpastas dos tipos
+            if "CCEE" in subpasta:
+                tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
+                for tipo in tipos_ccee:
+                    tipo_folder = subpasta_path / tipo
+                    tipo_folder.mkdir(exist_ok=True)
+    
     db.commit()
     db.refresh(emp)
-
-    # Cria estrutura de pastas usando o caminho da pasta cliente
-    empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {novo_id}"
-    
-    # Garante que a pasta base cliente existe
-    BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-    
-    # Cria pasta da empresa
-    empresa_folder.mkdir(exist_ok=True)
-    
-    # Cria pasta da unidade
-    unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
-    unidade_folder.mkdir(exist_ok=True)
-    
-    # Cria todas as subpastas padrão
-    for subpasta in SUBPASTAS_PADRAO:
-        subpasta_path = unidade_folder / subpasta
-        subpasta_path.mkdir(exist_ok=True)
-        
-        # Se for CCEE - DRI, cria subpastas dos tipos
-        if "CCEE" in subpasta:
-            tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-            for tipo in tipos_ccee:
-                tipo_folder = subpasta_path / tipo
-                tipo_folder.mkdir(exist_ok=True)
-    
     return emp
 
 @app.get("/empresas", response_model=list[schemas.EmpresaOut])
@@ -107,15 +111,30 @@ def excluir_empresa(empresa_pk: int, db: Session = Depends(get_db)):
     - Busca empresa por PK.
     - Se não existe → 404.
     - db.delete(emp) remove a empresa e, por CASCADE, remove as unidades/itens associados.
-      (Definido nos relacionamentos e ForeignKeys com ondelete='CASCADE')
-    OBS: Em produção, é recomendado um fluxo de confirmação (ex.: 'confirm=true').
     """
     emp = db.get(models.Empresa, empresa_pk)
     if not emp:
         raise HTTPException(status_code=404, detail="Empresa não encontrada")
+    
+    # Move pasta para backup antes de excluir do banco
+    try:
+        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        if empresa_folder.exists():
+            backup_folder = BASE_CLIENTES_PATH / "_BACKUP_EXCLUIDAS"
+            backup_folder.mkdir(exist_ok=True)
+            
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pasta_destino = backup_folder / f"{empresa_folder.name}_{timestamp}"
+            
+            import shutil
+            shutil.move(str(empresa_folder), str(pasta_destino))
+    except Exception as e:
+        print(f"Erro ao mover pasta para backup: {e}")
+    
     db.delete(emp)
     db.commit()
-    return  # 204 No Content
+    return
 
 # =====================
 # UNIDADES
@@ -144,6 +163,25 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
         empresa_id=payload.empresa_id
     )
     db.add(und); db.commit(); db.refresh(und)
+    
+    # Cria pasta da unidade no filesystem
+    try:
+        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
+        unidade_folder.mkdir(exist_ok=True)
+        
+        # Cria subpastas padrão
+        for subpasta in SUBPASTAS_PADRAO:
+            subpasta_path = unidade_folder / subpasta
+            subpasta_path.mkdir(exist_ok=True)
+            
+            if "CCEE" in subpasta:
+                tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
+                for tipo in tipos_ccee:
+                    (subpasta_path / tipo).mkdir(exist_ok=True)
+    except Exception as e:
+        print(f"Erro ao criar pastas da unidade: {e}")
+    
     return und
 
 @app.get("/unidades", response_model=list[schemas.UnidadeOut])
@@ -155,6 +193,43 @@ def listar_unidades(
     if empresa_id is not None:
         q = q.filter(models.Unidade.empresa_id == empresa_id)
     return q.order_by(models.Unidade.empresa_id, models.Unidade.id_unidade).all()
+
+@app.delete("/unidades/{unidade_pk}", status_code=204)
+def excluir_unidade(unidade_pk: int, db: Session = Depends(get_db)):
+    """
+    DELETE /unidades/{unidade_pk}
+    - Busca unidade por PK.
+    - Se não existe → 404.
+    - db.delete(und) remove a unidade e, por CASCADE, remove os itens associados.
+    """
+    und = db.get(models.Unidade, unidade_pk)
+    if not und:
+        raise HTTPException(status_code=404, detail="Unidade não encontrada")
+    
+    # Busca a empresa para montar o caminho da pasta
+    emp = db.get(models.Empresa, und.empresa_id)
+    
+    # Move pasta para backup antes de excluir do banco
+    try:
+        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
+        
+        if unidade_folder.exists():
+            backup_folder = BASE_CLIENTES_PATH / "_BACKUP_EXCLUIDAS"
+            backup_folder.mkdir(exist_ok=True)
+            
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pasta_destino = backup_folder / f"{unidade_folder.name}_{timestamp}"
+            
+            import shutil
+            shutil.move(str(unidade_folder), str(pasta_destino))
+    except Exception as e:
+        print(f"Erro ao mover pasta da unidade para backup: {e}")
+    
+    db.delete(und)
+    db.commit()
+    return
 
 # =====================
 # ITENS
@@ -237,6 +312,10 @@ def organizador_preview(payload: schemas.OrganizadorPreviewIn, db: Session = Dep
 def organizador_aplicar(payload: schemas.OrganizadorAplicarIn):
     return apply_moves([p.dict() for p in payload.plano])
 
+# =====================
+# SINCRONIZAÇÃO
+# =====================
+
 class SyncRequest(BaseModel):
     base_path: str
 
@@ -256,9 +335,21 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
     updated_count = 0
     
     try:
+        print(f"Sincronizando pasta: {base_path}")
+        
+        # Verifica se a pasta existe e é acessível
+        if not base_path.exists():
+            raise HTTPException(500, f"Pasta base não existe: {base_path}")
+        
         # Lista todas as pastas no diretório base (pasta cliente)
-        for folder in base_path.iterdir():
+        folders_found = list(base_path.iterdir())
+        print(f"Pastas encontradas: {len(folders_found)}")
+        
+        for folder in folders_found:
+            print(f"Processando: {folder.name}")
+            
             if not folder.is_dir():
+                print(f"  Ignorando arquivo: {folder.name}")
                 continue
                 
             folder_name = folder.name
@@ -269,10 +360,13 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                 nome_empresa = match.group(1).strip()
                 id_empresa = match.group(2)
                 
+                print(f"  Empresa encontrada: {nome_empresa} - {id_empresa}")
+                
                 # Verifica se a empresa já existe
                 existing = db.query(models.Empresa).filter_by(id_empresa=id_empresa).first()
                 
                 if not existing:
+                    print(f"  Criando nova empresa: {nome_empresa}")
                     # Cria a empresa no banco
                     emp = models.Empresa(nome=nome_empresa, id_empresa=id_empresa)
                     db.add(emp)
@@ -280,11 +374,15 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                     synced_count += 1
                     empresa_id = emp.id
                 else:
+                    print(f"  Empresa já existe: {nome_empresa}")
                     updated_count += 1
                     empresa_id = existing.id
                 
                 # Verifica subpastas (unidades) e sincroniza
-                for unidade_folder in folder.iterdir():
+                unidades_folders = list(folder.iterdir())
+                print(f"  Unidades encontradas: {len(unidades_folders)}")
+                
+                for unidade_folder in unidades_folders:
                     if not unidade_folder.is_dir():
                         continue
                         
@@ -293,6 +391,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                         nome_unidade = unidade_match.group(1).strip()
                         id_unidade = unidade_match.group(2)
                         
+                        print(f"    Unidade: {nome_unidade} - {id_unidade}")
+                        
                         # Verifica se a unidade já existe
                         existing_unidade = db.query(models.Unidade).filter_by(
                             id_unidade=id_unidade, 
@@ -300,6 +400,7 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                         ).first()
                         
                         if not existing_unidade:
+                            print(f"    Criando nova unidade: {nome_unidade}")
                             # Cria a unidade se não existir
                             und = models.Unidade(
                                 nome=nome_unidade,
@@ -312,6 +413,7 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                         for subpasta in SUBPASTAS_PADRAO:
                             subpasta_path = unidade_folder / subpasta
                             if not subpasta_path.exists():
+                                print(f"      Criando subpasta: {subpasta}")
                                 subpasta_path.mkdir(exist_ok=True)
                                 
                                 # Se for CCEE - DRI, cria subpastas dos tipos
@@ -319,10 +421,15 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                                     tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
                                     for tipo in tipos_ccee:
                                         (subpasta_path / tipo).mkdir(exist_ok=True)
+            else:
+                print(f"  Pasta ignorada (formato inválido): {folder_name}")
         
+        # Commit todas as mudanças
         db.commit()
+        print(f"Sincronização concluída: {synced_count} novas, {updated_count} existentes")
     
     except Exception as e:
+        print(f"Erro na sincronização: {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=500,
@@ -336,84 +443,65 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
         "base_path": str(base_path)
     }
 
-# Endpoint auxiliar para ler estrutura de uma pasta exemplo
-@app.get("/debug/ler-estrutura")
-async def ler_estrutura_pasta():
+@app.post("/empresas/criar-pastas")
+async def criar_pastas_do_banco(db: Session = Depends(get_db)):
     """
-    Endpoint de debug para ler estrutura da pasta ABASTECEDORA MIRELA
-    e identificar as subpastas padrão.
+    Cria pastas no filesystem baseado nas empresas e unidades que existem no banco.
+    Útil quando o banco tem dados mas as pastas não existem.
     """
-    exemplo_path = Path("B:/NOVO00_Nossos_Clientes/ABASTECEDORA MIRELA - 0167")
+    base_path = BASE_CLIENTES_PATH
+    base_path.mkdir(parents=True, exist_ok=True)
     
-    if not exemplo_path.exists():
-        return {"erro": "Pasta exemplo não encontrada", "caminho": str(exemplo_path)}
-    
-    estrutura = []
-    
-    # Lê primeiro nível (unidades)
-    for unidade_folder in exemplo_path.iterdir():
-        if unidade_folder.is_dir():
-            subpastas = []
-            # Lê segundo nível (subpastas da unidade)
-            for subfolder in unidade_folder.iterdir():
-                if subfolder.is_dir():
-                    subpastas.append(subfolder.name)
-                    # Se for CCEE - DRI, lê o terceiro nível
-                    if "CCEE" in subfolder.name:
-                        ccee_tipos = []
-                        for ccee_folder in subfolder.iterdir():
-                            if ccee_folder.is_dir():
-                                ccee_tipos.append(ccee_folder.name)
-                        if ccee_tipos:
-                            subpastas[-1] = f"{subfolder.name} -> {ccee_tipos}"
-            
-            estrutura.append({
-                "unidade": unidade_folder.name,
-                "subpastas": subpastas
-            })
-    
-    return {
-        "caminho_base": str(exemplo_path),
-        "estrutura": estrutura,
-        "subpastas_identificadas": list(set(
-            pasta for item in estrutura 
-            for pasta in item["subpastas"] 
-            if " -> " not in pasta  # Ignora detalhes de CCEE
-        ))
-    }
-
-# Endpoint para resetar banco (APENAS DESENVOLVIMENTO!)
-@app.delete("/debug/reset-database")
-async def reset_database(confirm: str = Query(...), db: Session = Depends(get_db)):
-    """
-    ⚠️ CUIDADO: Apaga TODOS os dados do banco!
-    Usar apenas em desenvolvimento.
-    Requer confirmação: ?confirm=APAGAR_TUDO
-    """
-    if confirm != "APAGAR_TUDO":
-        raise HTTPException(
-            status_code=400,
-            detail="Para confirmar, use: /debug/reset-database?confirm=APAGAR_TUDO"
-        )
+    pastas_criadas = 0
     
     try:
-        # Deleta todos os registros em ordem (respeitando FKs)
-        db.query(models.Item).delete()
-        db.query(models.Unidade).delete()
-        db.query(models.Empresa).delete()
-        db.commit()
+        # Busca todas as empresas com suas unidades
+        empresas = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
         
-        return {
-            "status": "sucesso",
-            "message": "Banco resetado com sucesso!",
-            "avisos": [
-                "Todos os dados foram apagados",
-                "Use o botão 'Atualizar' para sincronizar com as pastas existentes"
-            ]
-        }
+        for empresa in empresas:
+            empresa_folder = base_path / f"{empresa.nome} - {empresa.id_empresa}"
+            
+            if not empresa_folder.exists():
+                print(f"Criando pasta da empresa: {empresa.nome}")
+                empresa_folder.mkdir(exist_ok=True)
+                pastas_criadas += 1
+            
+            for unidade in empresa.unidades:
+                unidade_folder = empresa_folder / f"{unidade.nome} - {unidade.id_unidade}"
+                
+                if not unidade_folder.exists():
+                    print(f"  Criando pasta da unidade: {unidade.nome}")
+                    unidade_folder.mkdir(exist_ok=True)
+                    pastas_criadas += 1
+                
+                # Cria todas as subpastas padrão
+                for subpasta in SUBPASTAS_PADRAO:
+                    subpasta_path = unidade_folder / subpasta
+                    if not subpasta_path.exists():
+                        print(f"    Criando subpasta: {subpasta}")
+                        subpasta_path.mkdir(exist_ok=True)
+                        pastas_criadas += 1
+                        
+                        # Se for CCEE - DRI, cria subpastas dos tipos
+                        if "CCEE" in subpasta:
+                            tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
+                            for tipo in tipos_ccee:
+                                tipo_folder = subpasta_path / tipo
+                                if not tipo_folder.exists():
+                                    tipo_folder.mkdir(exist_ok=True)
+                                    pastas_criadas += 1
+        
+        print(f"Criação de pastas concluída: {pastas_criadas} pasta(s) criada(s)")
+    
     except Exception as e:
-        db.rollback()
+        print(f"Erro ao criar pastas: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao resetar banco: {str(e)}"
+            detail=f"Erro ao criar pastas: {str(e)}"
         )
+    
+    return {
+        "pastas_criadas": pastas_criadas,
+        "message": f"{pastas_criadas} pasta(s) criada(s) com sucesso",
+        "base_path": str(base_path)
+    }
