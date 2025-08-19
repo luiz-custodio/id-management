@@ -29,14 +29,34 @@ export const api = {
   listarEmpresas() {
     return http<Empresa[]>("/empresas");
   },
-  criarEmpresa(nome: string, unidade_001_nome: string) {
+  criarEmpresa(nome: string, unidades: string[]) {
     return http<Empresa>("/empresas", {
       method: "POST",
-      body: JSON.stringify({ nome, unidade_001_nome }),
+      body: JSON.stringify({ nome, unidades }),
     });
   },
   listarUnidades(empresaId: number) {
     return http<Unidade[]>(`/unidades?empresa_id=${empresaId}`);
+  },
+  criarUnidade(empresaId: number, nome: string) {
+    return http<Unidade>("/unidades", {
+      method: "POST",
+      body: JSON.stringify({ empresa_id: empresaId, nome }),
+    });
+  },
+  async excluirUnidade(unidadeId: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/unidades/${unidadeId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const error = await response.text().catch(() => '');
+      throw new Error(error || 'Erro ao excluir unidade');
+    }
+
+    // A API retorna 204 (No Content), então não precisa fazer .json()
+    return;
   },
   preview(base_dir: string, unidade_id: number, arquivos: string[]) {
     return http<Preview[]>("/organizador/preview", {
@@ -51,15 +71,50 @@ export const api = {
     });
   },
   async sincronizarEmpresas(basePath: string): Promise<{ synced: number; updated: number; message: string }> {
-    const response = await fetch(`${API_URL}/empresas/sync`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base_path: basePath }),
+    const response = await fetch(`${API_BASE}/empresas/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        base_path: basePath
+      })
     });
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || "Erro ao sincronizar empresas");
+      throw new Error(error.detail || 'Erro ao sincronizar empresas');
     }
+
     return response.json();
   },
+  async criarPastasFromBanco(): Promise<{ pastas_criadas: number; message: string }> {
+    const response = await fetch(`${API_BASE}/empresas/criar-pastas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Erro ao criar pastas');
+    }
+
+    return response.json();
+  },
+  async excluirEmpresa(empresaId: number): Promise<void> {
+    const response = await fetch(`${API_BASE}/empresas/${empresaId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const error = await response.text().catch(() => '');
+      throw new Error(error || 'Erro ao excluir empresa');
+    }
+
+    // A API retorna 204 (No Content), então não precisa fazer .json()
+    return;
+  }
 };

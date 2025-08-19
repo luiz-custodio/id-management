@@ -1,34 +1,55 @@
+# Python
 venv/
 .venv/
-
-# Arquivos de backup e ZIPs do projeto
-*.zip
-id-management_*.zip
-
-# Base de dados local
-backend/ids.db
-backend/*.db
-
-# Arquivos temporários e cache
-*.log
+__pycache__/
 *.pyc
 *.pyo
-__pycache__/
 .pytest_cache/
 .mypy_cache/
 .cache/
+*.log
+
+# Node.js & Frontend
+node_modules/
+dist/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Base de dados
+backend/ids.db
+backend/*.db
+*.db
+
+# Arquivos de backup e temporários
+*.zip
+id-management_*.zip
+*.tmp
+*.bak
+*.backup
+*.old
+*.new
 
 # Arquivos do sistema
 .DS_Store
 Thumbs.db
 desktop.ini
+*~
 
-# IDEs
+# IDEs e editores
 .vscode/
 .idea/
 .vs/
+*.swp
+*.swo
 
-# Node.js (se houver frontend)
-node_modules/
-dist/
-build/
+# Logs e relatórios
+*.log
+logs/
+reports/*.csv
+
+# Arquivos de configuração sensíveis
+.env
+!.env.example

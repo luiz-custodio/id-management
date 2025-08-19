@@ -1,21 +1,42 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, Home, Building2, MapPin, Settings, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText } from 'lucide-react';
+import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
-import type { Empresa } from '../lib/api';
+import type { Empresa, Unidade } from '../lib/api';
+
+// Importar função de criar unidade
+const { criarUnidade } = api;
 
 // Caminho base temporário para sincronização de clientes (pastas locais)
 const CLIENTE_BASE_PATH = "C:\\Users\\User\\Documents\\PROJETOS\\id-management\\cliente"; // usar \\\\ se vier de .env
 
 const EmpresasPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('empresas');
   const [searchTerm, setSearchTerm] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [unidadesPorEmpresa, setUnidadesPorEmpresa] = useState<Record<number, Unidade[]>>({});
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [formNome, setFormNome] = useState('');
-  const [formUnidades, setFormUnidades] = useState<string[]>(['Matriz']); // Array de nomes de unidades
+  const [formUnidades, setFormUnidades] = useState<string[]>(['Matriz']);
+  
+  // Estados para exclusão
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [empresaToDelete, setEmpresaToDelete] = useState<{id: number, nome: string} | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  
+  // Estados para exclusão de unidades
+  const [showDeleteUnidadeModal, setShowDeleteUnidadeModal] = useState(false);
+  const [unidadeToDelete, setUnidadeToDelete] = useState<{id: number, nome: string, empresa_nome: string} | null>(null);
+  const [deleteUnidadeConfirmation, setDeleteUnidadeConfirmation] = useState('');
+  const [deletingUnidade, setDeletingUnidade] = useState(false);
+  
+  // Estados para criação de unidades
+  const [showCreateUnidadeModal, setShowCreateUnidadeModal] = useState(false);
+  const [empresaToCreateUnidade, setEmpresaToCreateUnidade] = useState<{id: number, nome: string} | null>(null);
+  const [newUnidadeNome, setNewUnidadeNome] = useState('');
+  const [creatingUnidade, setCreatingUnidade] = useState(false);
   
   // Estados para upload
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('');
@@ -57,14 +78,32 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  // Nova função: força sincronização com o filesystem antes de listar
+  // Nova função: força sincronização completa com o filesystem
   const handleSync = async () => {
     try {
       setLoading(true);
       setError(null);
-      // Backend agora garante que a pasta base existe automaticamente
-      await api.sincronizarEmpresas(CLIENTE_BASE_PATH);
+      
+      // Primeiro, cria pastas baseadas no banco
+      const resultPastas = await api.criarPastasFromBanco();
+      
+      // Depois, sincroniza pastas existentes com o banco
+      const resultSync = await api.sincronizarEmpresas(CLIENTE_BASE_PATH);
+      
+      // Recarrega a lista atualizada
       await fetchEmpresas();
+      
+      // Mostra mensagem de sucesso com ambos os resultados
+      const totalPastas = resultPastas.pastas_criadas;
+      const totalSync = resultSync.synced + resultSync.updated;
+      
+      if (totalPastas > 0 || totalSync > 0) {
+        setError(`✅ Sincronização concluída: ${totalPastas} pasta(s) criada(s), ${totalSync} sincronizada(s)`);
+        setTimeout(() => setError(null), 4000);
+      } else {
+        setError(`✅ Tudo sincronizado!`);
+        setTimeout(() => setError(null), 2000);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao sincronizar empresas';
       setError(msg);
@@ -72,8 +111,6 @@ const EmpresasPage: React.FC = () => {
       setLoading(false);
     }
   };
-
-  useEffect(() => { fetchEmpresas(); }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,13 +130,8 @@ const EmpresasPage: React.FC = () => {
       setCreating(true);
       setError(null);
       
-      // Por enquanto cria com a primeira unidade (backend precisa ser adaptado para múltiplas)
-      await api.criarEmpresa(formNome.trim(), unidadesValidas[0]);
-      
-      // TODO: Criar as unidades adicionais após criar a empresa
-      // for (let i = 1; i < unidadesValidas.length; i++) {
-      //   await api.criarUnidade(empresaId, unidadesValidas[i]);
-      // }
+      // Envia todas as unidades válidas
+      await api.criarEmpresa(formNome.trim(), unidadesValidas);
       
       setFormNome('');
       setFormUnidades(['Matriz']);
@@ -113,7 +145,131 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  // Adiciona nova unidade ao formulário
+  // Função para criar unidade
+  const handleCreateUnidade = async () => {
+    if (!empresaToCreateUnidade || !newUnidadeNome.trim()) return;
+    
+    setCreatingUnidade(true);
+    try {
+      await criarUnidade(empresaToCreateUnidade.id, newUnidadeNome.trim());
+      
+      // Atualizar a lista de unidades para a empresa
+      await loadUnidadesEmpresa(empresaToCreateUnidade.id);
+      
+      // Limpar estados
+      setShowCreateUnidadeModal(false);
+      setEmpresaToCreateUnidade(null);
+      setNewUnidadeNome('');
+      
+      // Notificar sucesso
+      alert(`Unidade "${newUnidadeNome.trim()}" criada com sucesso!`);
+      
+    } catch (error) {
+      console.error('Erro ao criar unidade:', error);
+      alert('Erro ao criar unidade. Tente novamente.');
+    } finally {
+      setCreatingUnidade(false);
+    }
+  };
+
+  // Função para abrir modal de exclusão
+  const handleOpenDeleteModal = (empresa: Empresa) => {
+    setEmpresaToDelete({ id: empresa.id, nome: empresa.nome });
+    setShowDeleteModal(true);
+    setDeleteConfirmation('');
+  };
+
+  // Função para confirmar exclusão
+  const handleConfirmDelete = async () => {
+    if (!empresaToDelete || deleteConfirmation !== empresaToDelete.nome) {
+      setError('Digite o nome da empresa corretamente para confirmar');
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setError(null);
+      
+      await api.excluirEmpresa(empresaToDelete.id);
+      
+      // Fecha modal e limpa estados
+      setShowDeleteModal(false);
+      setEmpresaToDelete(null);
+      setDeleteConfirmation('');
+      
+      // Se a empresa excluída estava selecionada, limpa a seleção
+      if (selectedEmpresa === String(empresaToDelete.id)) {
+        setSelectedEmpresa('');
+        setSelectedUnidade('');
+        setSelectedEmpresaNome('');
+        setSelectedUnidadeNome('');
+      }
+      
+      // Recarrega lista
+      await fetchEmpresas();
+      
+      // Mensagem de sucesso
+      setError(`✅ Empresa ${empresaToDelete.nome} excluída com sucesso`);
+      setTimeout(() => setError(null), 3000);
+      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir empresa';
+      setError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Função para abrir modal de exclusão de unidade
+  const handleOpenDeleteUnidadeModal = (unidadeId: number, unidadeNome: string, empresaNome: string) => {
+    setUnidadeToDelete({ id: unidadeId, nome: unidadeNome, empresa_nome: empresaNome });
+    setShowDeleteUnidadeModal(true);
+    setDeleteUnidadeConfirmation('');
+  };
+
+  // Função para confirmar exclusão de unidade
+  const handleConfirmDeleteUnidade = async () => {
+    if (!unidadeToDelete || deleteUnidadeConfirmation !== unidadeToDelete.nome) {
+      setError('Digite o nome da unidade corretamente para confirmar');
+      return;
+    }
+
+    try {
+      setDeletingUnidade(true);
+      setError(null);
+      
+      await api.excluirUnidade(unidadeToDelete.id);
+      
+      // Fecha modal e limpa estados
+      setShowDeleteUnidadeModal(false);
+      setUnidadeToDelete(null);
+      setDeleteUnidadeConfirmation('');
+      
+      // Se a unidade excluída estava selecionada, limpa a seleção
+      if (selectedUnidade === String(unidadeToDelete.id)) {
+        setSelectedEmpresa('');
+        setSelectedUnidade('');
+        setSelectedEmpresaNome('');
+        setSelectedUnidadeNome('');
+      }
+      
+      // Recarrega lista
+      await fetchEmpresas();
+      
+      // Mensagem de sucesso
+      setError(`✅ Unidade ${unidadeToDelete.nome} excluída com sucesso`);
+      setTimeout(() => setError(null), 3000);
+      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir unidade';
+      setError(msg);
+    } finally {
+      setDeletingUnidade(false);
+    }
+  };
+
+  useEffect(() => { fetchEmpresas(); }, []);
+
   const handleAddUnidade = () => {
     setFormUnidades([...formUnidades, '']);
   };
@@ -183,7 +339,7 @@ const EmpresasPage: React.FC = () => {
   };
 
   // Toggle expansão de empresa - permite apenas uma por vez
-  const toggleEmpresaExpansion = (empresaId: number) => {
+  const toggleEmpresaExpansion = async (empresaId: number) => {
     setExpandedEmpresas(prev => {
       const newSet = new Set<number>();
       
@@ -210,15 +366,28 @@ const EmpresasPage: React.FC = () => {
         }
         // Expande a nova empresa
         newSet.add(empresaId);
+        
+        // Carrega as unidades desta empresa se ainda não foram carregadas
+        if (!unidadesPorEmpresa[empresaId]) {
+          loadUnidadesEmpresa(empresaId);
+        }
+        
         return newSet;
       }
     });
   };
 
-  // Seleciona unidade ao clicar
-  const handleUnidadeSelect = (empresaId: number, unidadeId: string) => {
-    setSelectedEmpresa(String(empresaId));
-    setSelectedUnidade(unidadeId);
+  // Função para carregar unidades de uma empresa
+  const loadUnidadesEmpresa = async (empresaId: number) => {
+    try {
+      const unidades = await api.listarUnidades(empresaId);
+      setUnidadesPorEmpresa(prev => ({
+        ...prev,
+        [empresaId]: unidades
+      }));
+    } catch (err) {
+      console.error('Erro ao carregar unidades:', err);
+    }
   };
 
   // Seleciona unidade ao dar duplo clique
@@ -237,13 +406,6 @@ const EmpresasPage: React.FC = () => {
       setSelectedUnidadeNome(unidadeNome);
     }
   };
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'empresas', label: 'Empresas', icon: Building2 },
-    { id: 'unidades', label: 'Unidades', icon: MapPin },
-    { id: 'configuracao', label: 'Configuração', icon: Settings }
-  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 text-white flex">
@@ -434,10 +596,10 @@ const EmpresasPage: React.FC = () => {
               onClick={handleSync}
               disabled={loading}
               className="bg-slate-800/70 hover:bg-slate-800/90 disabled:opacity-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-800/40 hover:border-blue-700/60 backdrop-blur-sm"
-              title="Sincroniza com as pastas locais e recarrega"
+              title="Sincroniza banco com pastas locais - cria pastas faltantes"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> : <RefreshCw className="w-4 h-4 transition-transform duration-300 hover:rotate-180 text-blue-400" />}
-              Atualizar
+              Sincronizar
             </button>
             <button
               onClick={() => setShowForm(s => !s)}
@@ -526,9 +688,9 @@ const EmpresasPage: React.FC = () => {
         )}
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 text-red-400 bg-red-950/30 border border-red-800 rounded p-3 text-sm animate-fade-in-down">
+          <div className={`mb-4 flex items-start gap-2 ${error.startsWith('✅') ? 'text-green-400 bg-green-950/30 border-green-800' : 'text-red-400 bg-red-950/30 border-red-800'} border rounded p-3 text-sm animate-fade-in-down`}>
             <AlertCircle className="w-4 h-4 mt-0.5" />
-            <span>{error}</span>
+            <span>{error.replace('✅ ', '')}</span>
           </div>
         )}
 
@@ -551,6 +713,7 @@ const EmpresasPage: React.FC = () => {
               <tr className="border-b border-blue-800/40 text-sm bg-gradient-to-r from-blue-800/25 to-blue-700/25">
                 <th className="text-left px-6 py-3 font-semibold text-blue-300 w-24">ID</th>
                 <th className="text-left px-6 py-3 font-semibold text-blue-300">Nome</th>
+                <th className="text-right px-6 py-3 font-semibold text-blue-300 w-20">Ações</th>
               </tr>
             </thead>
             <tbody className="text-sm">
@@ -562,60 +725,123 @@ const EmpresasPage: React.FC = () => {
                       className={`border-b border-blue-800/30 hover:bg-blue-800/15 transition-all duration-200 cursor-pointer ${
                         isExpanded ? 'bg-blue-800/10' : ''
                       }`}
-                      onClick={() => toggleEmpresaExpansion(empresa.id)}
                     >
-                      <td className="px-6 py-3 text-blue-200 font-mono tracking-wider">
+                      <td 
+                        className="px-6 py-3 text-blue-200 font-mono tracking-wider"
+                        onClick={() => toggleEmpresaExpansion(empresa.id)}
+                      >
                         {empresa.id_empresa}
                       </td>
-                      <td className="px-6 py-3 text-white">
+                      <td 
+                        className="px-6 py-3 text-white"
+                        onClick={() => toggleEmpresaExpansion(empresa.id)}
+                      >
                         {empresa.nome}
                         {isExpanded && (
                           <span className="ml-2 text-xs text-blue-400 animate-fade-in">(expandido)</span>
                         )}
+                      </td>
+                      <td className="px-6 py-3 text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEmpresaToCreateUnidade({ id: empresa.id, nome: empresa.nome });
+                              setShowCreateUnidadeModal(true);
+                            }}
+                            className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-950/30 rounded transition-all duration-200 hover:scale-110"
+                            title="Criar nova unidade"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDeleteModal(empresa);
+                            }}
+                            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-all duration-200 hover:scale-110"
+                            title="Excluir empresa"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     
                     {/* Unidades expandidas com animação */}
                     {isExpanded && (
                       <tr>
-                        <td colSpan={2} className="p-0 bg-slate-900/50">
+                        <td colSpan={3} className="p-0 bg-slate-900/50">
                           <div className="animate-slide-down">
                             {/* Linha conectora visual */}
                             <div className="px-6 py-1">
                               <div className="border-l-2 border-blue-600/50 ml-4 h-2"></div>
                             </div>
                             
-                            {/* Unidade - Matriz */}
-                            <div 
-                              className={`px-6 py-3 hover:bg-blue-800/15 transition-colors cursor-pointer border-b border-blue-800/30 ${
-                                selectedUnidade === '001' && selectedEmpresa === String(empresa.id)
-                                  ? 'bg-blue-700/10 border-blue-600/40' 
-                                  : ''
-                              }`}
-                              onClick={(e) => e.stopPropagation()}
-                              onDoubleClick={() => handleUnidadeDoubleClick(empresa.id, '001', empresa.nome, 'Matriz')}
-                              title="Duplo clique para selecionar"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                  <div className="flex items-center text-blue-400 font-mono text-xs">
-                                    <div className="w-4 border-b border-l-2 border-blue-600/50 h-4 mr-2 ml-4"></div>
-                                    001
+                            {/* Renderização dinâmica das unidades */}
+                            {unidadesPorEmpresa[empresa.id]?.map((unidade) => (
+                              <div 
+                                key={unidade.id}
+                                className={`px-6 py-3 hover:bg-blue-800/15 transition-colors cursor-pointer border-b border-blue-800/30 ${
+                                  selectedUnidade === unidade.id_unidade && selectedEmpresa === String(empresa.id)
+                                    ? 'bg-blue-700/10 border-blue-600/40' 
+                                    : ''
+                                }`}
+                                onClick={(e) => e.stopPropagation()}
+                                onDoubleClick={() => handleUnidadeDoubleClick(empresa.id, unidade.id_unidade, empresa.nome, unidade.nome)}
+                                title="Duplo clique para selecionar"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex items-center text-blue-400 font-mono text-xs">
+                                      <div className="w-4 border-b border-l-2 border-blue-600/50 h-4 mr-2 ml-4"></div>
+                                      {unidade.id_unidade}
+                                    </div>
+                                    <div className="text-blue-200">
+                                      <MapPin className="w-3 h-3 inline mr-2 text-blue-400" />
+                                      {unidade.nome}
+                                    </div>
                                   </div>
-                                  <div className="text-blue-200">
-                                    <MapPin className="w-3 h-3 inline mr-2 text-blue-400" />
-                                    Matriz
+                                  <div className="flex items-center gap-2">
+                                    {selectedUnidade === unidade.id_unidade && selectedEmpresa === String(empresa.id) && (
+                                      <span className="text-xs bg-blue-700/25 text-blue-300 px-2 py-1 rounded animate-pulse border border-blue-600/50">
+                                        Selecionada
+                                      </span>
+                                    )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenDeleteUnidadeModal(unidade.id, unidade.nome, empresa.nome);
+                                      }}
+                                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-all duration-200 hover:scale-110"
+                                      title="Excluir unidade"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
                                   </div>
                                 </div>
-                                {selectedUnidade === '001' && selectedEmpresa === String(empresa.id) && (
-                                  <span className="text-xs bg-blue-700/25 text-blue-300 px-2 py-1 rounded animate-pulse border border-blue-600/50">
-                                    Selecionada
-                                  </span>
-                                )}
                               </div>
-                            </div>
+                            ))}
                             
-                            {/* TODO: Carregar unidades reais da empresa do backend */}
+                            {/* Loading das unidades */}
+                            {!unidadesPorEmpresa[empresa.id] && (
+                              <div className="px-6 py-3 text-blue-400 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 border-b border-l-2 border-blue-600/50 h-4 mr-2 ml-4"></div>
+                                  Carregando unidades...
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Nenhuma unidade encontrada */}
+                            {unidadesPorEmpresa[empresa.id]?.length === 0 && (
+                              <div className="px-6 py-3 text-blue-400 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 border-b border-l-2 border-blue-600/50 h-4 mr-2 ml-4"></div>
+                                  Nenhuma unidade encontrada
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -637,6 +863,208 @@ const EmpresasPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Modal de Exclusão */}
+      {showDeleteModal && empresaToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-slate-900/95 border border-red-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
+            <h2 className="text-xl font-bold text-red-400 mb-4 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              Confirmar Exclusão
+            </h2>
+            
+            <div className="space-y-4">
+              <p className="text-blue-200">
+                Você está prestes a excluir a empresa <strong className="text-white">{empresaToDelete.nome}</strong>.
+              </p>
+              
+              <div className="bg-red-950/30 border border-red-800/40 rounded p-3 text-sm">
+                <p className="text-red-300 font-medium mb-2">⚠️ Atenção:</p>
+                <ul className="text-red-200 space-y-1 text-xs list-disc list-inside">
+                  <li>Todas as unidades serão excluídas</li>
+                  <li>Todos os documentos serão removidos</li>
+                  <li>A pasta será movida para backup</li>
+                  <li>Esta ação não pode ser desfeita</li>
+                </ul>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-blue-300 mb-2">
+                  Digite <strong className="text-white">{empresaToDelete.nome}</strong> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  className="w-full bg-slate-800/70 border border-red-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-red-500"
+                  placeholder="Digite o nome da empresa"
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setEmpresaToDelete(null);
+                  setDeleteConfirmation('');
+                }}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-slate-800/70 hover:bg-slate-800/90 rounded transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-800/40"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting || deleteConfirmation !== empresaToDelete.nome}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Excluir Empresa
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Exclusão de Unidade */}
+      {showDeleteUnidadeModal && unidadeToDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-slate-900/95 border border-red-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
+            <h2 className="text-xl font-bold text-red-400 mb-4 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              Confirmar Exclusão de Unidade
+            </h2>
+            
+            <div className="space-y-4">
+              <p className="text-blue-200">
+                Você está prestes a excluir a unidade <strong>{unidadeToDelete.nome}</strong> da empresa <strong>{unidadeToDelete.empresa_nome}</strong>.
+              </p>
+              
+              <div className="bg-red-950/30 border border-red-800/40 rounded p-3 text-sm">
+                <p className="text-red-300 font-medium">⚠️ Atenção:</p>
+                <p className="text-red-200">Esta ação irá excluir permanentemente a unidade e todos os itens associados a ela. A pasta será movida para backup.</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm mb-2 text-red-200">Digite o nome da unidade para confirmar:</label>
+                <input
+                  type="text"
+                  value={deleteUnidadeConfirmation}
+                  onChange={(e) => setDeleteUnidadeConfirmation(e.target.value)}
+                  className="w-full bg-slate-800/70 border border-red-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-red-500"
+                  placeholder="Digite o nome da unidade"
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowDeleteUnidadeModal(false);
+                  setUnidadeToDelete(null);
+                  setDeleteUnidadeConfirmation('');
+                }}
+                disabled={deletingUnidade}
+                className="flex-1 px-4 py-2 bg-slate-800/70 hover:bg-slate-800/90 rounded transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-800/40"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDeleteUnidade}
+                disabled={deletingUnidade || deleteUnidadeConfirmation !== unidadeToDelete.nome}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-all duration-200 hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
+              >
+                {deletingUnidade ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Excluir Unidade
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Criação de Unidade */}
+      {showCreateUnidadeModal && empresaToCreateUnidade && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-slate-900/95 border border-green-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
+            <h2 className="text-xl font-bold text-green-400 mb-4 flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              Criar Nova Unidade
+            </h2>
+            
+            <div className="space-y-4">
+              <p className="text-blue-200">
+                Criando nova unidade para a empresa <strong className="text-white">{empresaToCreateUnidade.nome}</strong>.
+              </p>
+              
+              <div>
+                <label className="block text-sm font-medium text-blue-300 mb-2">
+                  Nome da Unidade:
+                </label>
+                <input
+                  type="text"
+                  value={newUnidadeNome}
+                  onChange={(e) => setNewUnidadeNome(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  placeholder="Ex: Filial São Paulo"
+                  disabled={creatingUnidade}
+                />
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => {
+                    setShowCreateUnidadeModal(false);
+                    setEmpresaToCreateUnidade(null);
+                    setNewUnidadeNome('');
+                  }}
+                  disabled={creatingUnidade}
+                  className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded-md hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCreateUnidade}
+                  disabled={creatingUnidade || !newUnidadeNome.trim()}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  {creatingUnidade ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Criando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Criar Unidade
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
