@@ -51,8 +51,19 @@ export const api = {
     });
 
     if (!response.ok) {
-      const error = await response.text().catch(() => '');
-      throw new Error(error || 'Erro ao excluir unidade');
+      // Tenta pegar a mensagem de erro detalhada da API
+      let errorMessage = 'Erro ao excluir unidade';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch {
+        // Se não conseguir fazer parse do JSON, usa o texto da resposta
+        const errorText = await response.text().catch(() => '');
+        if (errorText) {
+          errorMessage = errorText;
+        }
+      }
+      throw new Error(errorMessage);
     }
 
     // A API retorna 204 (No Content), então não precisa fazer .json()
@@ -72,6 +83,31 @@ export const api = {
   },
   async sincronizarEmpresas(basePath: string): Promise<{ synced: number; updated: number; message: string }> {
     const response = await fetch(`${API_BASE}/empresas/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        base_path: basePath
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Erro ao sincronizar empresas');
+    }
+
+    return response.json();
+  },
+  async sincronizarEmpresasBidirecional(basePath: string): Promise<{ 
+    removed_empresas: number; 
+    removed_unidades: number; 
+    added_empresas: number; 
+    added_unidades: number; 
+    created_folders: number; 
+    message: string; 
+  }> {
+    const response = await fetch(`${API_BASE}/empresas/sync-bidirectional`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

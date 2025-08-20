@@ -200,11 +200,19 @@ def excluir_unidade(unidade_pk: int, db: Session = Depends(get_db)):
     DELETE /unidades/{unidade_pk}
     - Busca unidade por PK.
     - Se não existe → 404.
+    - PROTEÇÃO: Não permite excluir a unidade 001 (Matriz).
     - db.delete(und) remove a unidade e, por CASCADE, remove os itens associados.
     """
     und = db.get(models.Unidade, unidade_pk)
     if not und:
         raise HTTPException(status_code=404, detail="Unidade não encontrada")
+    
+    # PROTEÇÃO: Não permite excluir a unidade 001 (Matriz)
+    if und.id_unidade == "001":
+        raise HTTPException(
+            status_code=400, 
+            detail="Não é permitido excluir a unidade 001 (Matriz). Esta é a unidade principal da empresa."
+        )
     
     # Busca a empresa para montar o caminho da pasta
     emp = db.get(models.Empresa, und.empresa_id)
@@ -318,6 +326,201 @@ def organizador_aplicar(payload: schemas.OrganizadorAplicarIn):
 
 class SyncRequest(BaseModel):
     base_path: str
+
+@app.post("/empresas/sync-bidirectional")
+async def sincronizar_empresas_bidirectional(request: SyncRequest, db: Session = Depends(get_db)):
+    """
+    Sincronização bidirecional completa:
+    1. Remove do banco empresas/unidades que não existem mais no filesystem
+    2. Adiciona ao banco empresas/unidades que existem no filesystem mas não no banco
+    3. Cria pastas para empresas/unidades do banco que não existem no filesystem
+    """
+    base_path = BASE_CLIENTES_PATH
+    base_path.mkdir(parents=True, exist_ok=True)
+    
+    removed_empresas = 0
+    removed_unidades = 0
+    added_empresas = 0
+    added_unidades = 0
+    created_folders = 0
+    
+    try:
+        print(f"Sincronização bidirecional iniciada: {base_path}")
+        
+        # ========================================
+        # FASE 1: COLETA DADOS DO FILESYSTEM
+        # ========================================
+        filesystem_empresas = {}  # {id_empresa: {nome, unidades: {id_unidade: nome}}}
+        
+        if base_path.exists():
+            for folder in base_path.iterdir():
+                if not folder.is_dir() or folder.name.startswith('_BACKUP'):
+                    continue
+                    
+                # Tenta extrair nome e ID do padrão "NOME - 0001"
+                match = re.match(r'^(.+?)\s*-\s*(\d{4})$', folder.name)
+                if match:
+                    nome_empresa = match.group(1).strip()
+                    id_empresa = match.group(2)
+                    
+                    filesystem_empresas[id_empresa] = {
+                        'nome': nome_empresa,
+                        'unidades': {}
+                    }
+                    
+                    # Verifica unidades desta empresa
+                    for unidade_folder in folder.iterdir():
+                        if not unidade_folder.is_dir():
+                            continue
+                            
+                        unidade_match = re.match(r'^(.+?)\s*-\s*(\d{3})$', unidade_folder.name)
+                        if unidade_match:
+                            nome_unidade = unidade_match.group(1).strip()
+                            id_unidade = unidade_match.group(2)
+                            
+                            filesystem_empresas[id_empresa]['unidades'][id_unidade] = nome_unidade
+        
+        # ========================================
+        # FASE 2: COLETA DADOS DO BANCO
+        # ========================================
+        db_empresas = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
+        db_empresas_dict = {emp.id_empresa: emp for emp in db_empresas}
+        
+        # ========================================
+        # FASE 3: REMOVE DO BANCO O QUE NÃO EXISTE NO FILESYSTEM
+        # ========================================
+        for db_empresa in db_empresas:
+            if db_empresa.id_empresa not in filesystem_empresas:
+                print(f"Removendo empresa do banco (não existe no filesystem): {db_empresa.nome}")
+                
+                # Move pasta para backup se existir
+                empresa_folder = base_path / f"{db_empresa.nome} - {db_empresa.id_empresa}"
+                if empresa_folder.exists():
+                    backup_folder = base_path / "_BACKUP_SYNC"
+                    backup_folder.mkdir(exist_ok=True)
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    import shutil
+                    shutil.move(str(empresa_folder), str(backup_folder / f"{empresa_folder.name}_{timestamp}"))
+                
+                db.delete(db_empresa)
+                removed_empresas += 1
+            else:
+                # Empresa existe, verifica unidades
+                fs_unidades = filesystem_empresas[db_empresa.id_empresa]['unidades']
+                
+                for db_unidade in db_empresa.unidades:
+                    if db_unidade.id_unidade not in fs_unidades:
+                        print(f"  Removendo unidade do banco (não existe no filesystem): {db_unidade.nome}")
+                        
+                        # Move pasta para backup se existir
+                        empresa_folder = base_path / f"{db_empresa.nome} - {db_empresa.id_empresa}"
+                        unidade_folder = empresa_folder / f"{db_unidade.nome} - {db_unidade.id_unidade}"
+                        if unidade_folder.exists():
+                            backup_folder = base_path / "_BACKUP_SYNC"
+                            backup_folder.mkdir(exist_ok=True)
+                            from datetime import datetime
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            import shutil
+                            shutil.move(str(unidade_folder), str(backup_folder / f"{unidade_folder.name}_{timestamp}"))
+                        
+                        db.delete(db_unidade)
+                        removed_unidades += 1
+        
+        # ========================================
+        # FASE 4: ADICIONA AO BANCO O QUE EXISTE NO FILESYSTEM
+        # ========================================
+        for id_empresa, fs_empresa_data in filesystem_empresas.items():
+            db_empresa = db_empresas_dict.get(id_empresa)
+            
+            if not db_empresa:
+                print(f"Adicionando empresa ao banco: {fs_empresa_data['nome']}")
+                db_empresa = models.Empresa(nome=fs_empresa_data['nome'], id_empresa=id_empresa)
+                db.add(db_empresa)
+                db.flush()
+                added_empresas += 1
+            
+            # Verifica unidades
+            for id_unidade, nome_unidade in fs_empresa_data['unidades'].items():
+                existing_unidade = db.query(models.Unidade).filter_by(
+                    id_unidade=id_unidade, 
+                    empresa_id=db_empresa.id
+                ).first()
+                
+                if not existing_unidade:
+                    print(f"  Adicionando unidade ao banco: {nome_unidade}")
+                    unidade = models.Unidade(
+                        nome=nome_unidade,
+                        id_unidade=id_unidade,
+                        empresa_id=db_empresa.id
+                    )
+                    db.add(unidade)
+                    added_unidades += 1
+        
+        # ========================================
+        # FASE 5: CRIA PASTAS PARA DADOS DO BANCO QUE NÃO EXISTEM NO FILESYSTEM
+        # ========================================
+        db.flush()  # Garante que as mudanças anteriores estão aplicadas
+        db_empresas_updated = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
+        
+        for empresa in db_empresas_updated:
+            empresa_folder = base_path / f"{empresa.nome} - {empresa.id_empresa}"
+            
+            if not empresa_folder.exists():
+                print(f"Criando pasta da empresa: {empresa.nome}")
+                empresa_folder.mkdir(exist_ok=True)
+                created_folders += 1
+            
+            for unidade in empresa.unidades:
+                unidade_folder = empresa_folder / f"{unidade.nome} - {unidade.id_unidade}"
+                
+                if not unidade_folder.exists():
+                    print(f"  Criando pasta da unidade: {unidade.nome}")
+                    unidade_folder.mkdir(exist_ok=True)
+                    created_folders += 1
+                
+                # Cria subpastas padrão
+                for subpasta in SUBPASTAS_PADRAO:
+                    subpasta_path = unidade_folder / subpasta
+                    if not subpasta_path.exists():
+                        subpasta_path.mkdir(exist_ok=True)
+                        created_folders += 1
+                        
+                        if "CCEE" in subpasta:
+                            tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
+                            for tipo in tipos_ccee:
+                                tipo_folder = subpasta_path / tipo
+                                if not tipo_folder.exists():
+                                    tipo_folder.mkdir(exist_ok=True)
+                                    created_folders += 1
+        
+        # Commit todas as mudanças
+        db.commit()
+        
+        print(f"Sincronização bidirecional concluída:")
+        print(f"  - Empresas removidas: {removed_empresas}")
+        print(f"  - Unidades removidas: {removed_unidades}")
+        print(f"  - Empresas adicionadas: {added_empresas}")
+        print(f"  - Unidades adicionadas: {added_unidades}")
+        print(f"  - Pastas criadas: {created_folders}")
+    
+    except Exception as e:
+        print(f"Erro na sincronização bidirecional: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro na sincronização bidirecional: {str(e)}"
+        )
+    
+    return {
+        "removed_empresas": removed_empresas,
+        "removed_unidades": removed_unidades,
+        "added_empresas": added_empresas,
+        "added_unidades": added_unidades,
+        "created_folders": created_folders,
+        "message": f"Sincronização completa: -{removed_empresas-removed_unidades} removidos, +{added_empresas+added_unidades} adicionados, {created_folders} pastas criadas",
+        "base_path": str(base_path)
+    }
 
 @app.post("/empresas/sync")
 async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_db)):
