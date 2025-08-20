@@ -28,7 +28,7 @@ const EmpresasPage: React.FC = () => {
   
   // Estados para exclusão de unidades
   const [showDeleteUnidadeModal, setShowDeleteUnidadeModal] = useState(false);
-  const [unidadeToDelete, setUnidadeToDelete] = useState<{id: number, nome: string, empresa_nome: string} | null>(null);
+  const [unidadeToDelete, setUnidadeToDelete] = useState<{id: number, nome: string, empresa_nome: string, empresa_id: number} | null>(null);
   const [deleteUnidadeConfirmation, setDeleteUnidadeConfirmation] = useState('');
   const [deletingUnidade, setDeletingUnidade] = useState(false);
   
@@ -78,28 +78,35 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  // Nova função: força sincronização completa com o filesystem
+  // Nova função: força sincronização bidirecional completa com o filesystem
   const handleSync = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Primeiro, cria pastas baseadas no banco
-      const resultPastas = await api.criarPastasFromBanco();
-      
-      // Depois, sincroniza pastas existentes com o banco
-      const resultSync = await api.sincronizarEmpresas(CLIENTE_BASE_PATH);
+      // Sincronização bidirecional: remove o que não existe + adiciona o que existe + cria pastas
+      const result = await api.sincronizarEmpresasBidirecional(CLIENTE_BASE_PATH);
       
       // Recarrega a lista atualizada
       await fetchEmpresas();
       
-      // Mostra mensagem de sucesso com ambos os resultados
-      const totalPastas = resultPastas.pastas_criadas;
-      const totalSync = resultSync.synced + resultSync.updated;
+      // Limpa cache de unidades expandidas para forçar recarregamento
+      setUnidadesPorEmpresa({});
+      setExpandedEmpresas(new Set());
       
-      if (totalPastas > 0 || totalSync > 0) {
-        setError(`✅ Sincronização concluída: ${totalPastas} pasta(s) criada(s), ${totalSync} sincronizada(s)`);
-        setTimeout(() => setError(null), 4000);
+      // Mostra mensagem de sucesso detalhada
+      const totalChanges = result.removed_empresas + result.removed_unidades + result.added_empresas + result.added_unidades;
+      
+      if (totalChanges > 0) {
+        const details = [];
+        if (result.removed_empresas > 0) details.push(`${result.removed_empresas} empresa(s) removida(s)`);
+        if (result.removed_unidades > 0) details.push(`${result.removed_unidades} unidade(s) removida(s)`);
+        if (result.added_empresas > 0) details.push(`${result.added_empresas} empresa(s) adicionada(s)`);
+        if (result.added_unidades > 0) details.push(`${result.added_unidades} unidade(s) adicionada(s)`);
+        if (result.created_folders > 0) details.push(`${result.created_folders} pasta(s) criada(s)`);
+        
+        setError(`✅ Sincronização concluída: ${details.join(', ')}`);
+        setTimeout(() => setError(null), 6000);
       } else {
         setError(`✅ Tudo sincronizado!`);
         setTimeout(() => setError(null), 2000);
@@ -221,8 +228,8 @@ const EmpresasPage: React.FC = () => {
   };
 
   // Função para abrir modal de exclusão de unidade
-  const handleOpenDeleteUnidadeModal = (unidadeId: number, unidadeNome: string, empresaNome: string) => {
-    setUnidadeToDelete({ id: unidadeId, nome: unidadeNome, empresa_nome: empresaNome });
+  const handleOpenDeleteUnidadeModal = (unidadeId: number, unidadeNome: string, empresaNome: string, empresaId: number) => {
+    setUnidadeToDelete({ id: unidadeId, nome: unidadeNome, empresa_nome: empresaNome, empresa_id: empresaId });
     setShowDeleteUnidadeModal(true);
     setDeleteUnidadeConfirmation('');
   };
@@ -253,16 +260,33 @@ const EmpresasPage: React.FC = () => {
         setSelectedUnidadeNome('');
       }
       
-      // Recarrega lista
+      // Recarrega lista de empresas
       await fetchEmpresas();
+      
+      // Recarrega as unidades da empresa específica se ela estiver expandida
+      if (unidadeToDelete && expandedEmpresas.has(unidadeToDelete.empresa_id)) {
+        console.log(`Recarregando unidades da empresa ${unidadeToDelete.empresa_id}`);
+        await loadUnidadesEmpresa(unidadeToDelete.empresa_id);
+      }
       
       // Mensagem de sucesso
       setError(`✅ Unidade ${unidadeToDelete.nome} excluída com sucesso`);
       setTimeout(() => setError(null), 3000);
       
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao excluir unidade';
-      setError(msg);
+      console.error('Erro ao excluir unidade:', err);
+      
+      // Se for erro 400 (proteção da unidade 001), fecha o modal e mostra a mensagem
+      if (err instanceof Error && err.message.includes('Não é permitido excluir a unidade 001')) {
+        setShowDeleteUnidadeModal(false);
+        setUnidadeToDelete(null);
+        setDeleteUnidadeConfirmation('');
+        setError('❌ Não é permitido excluir a unidade 001 (Matriz). Esta é a unidade principal da empresa.');
+        setTimeout(() => setError(null), 5000);
+      } else {
+        const msg = err instanceof Error ? err.message : 'Erro ao excluir unidade';
+        setError(msg);
+      }
     } finally {
       setDeletingUnidade(false);
     }
@@ -800,6 +824,11 @@ const EmpresasPage: React.FC = () => {
                                     <div className="text-blue-200">
                                       <MapPin className="w-3 h-3 inline mr-2 text-blue-400" />
                                       {unidade.nome}
+                                      {unidade.id_unidade === "001" && (
+                                        <span className="ml-2 text-xs bg-blue-700/30 text-blue-300 px-2 py-0.5 rounded border border-blue-600/50">
+                                          Matriz
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
@@ -808,16 +837,22 @@ const EmpresasPage: React.FC = () => {
                                         Selecionada
                                       </span>
                                     )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenDeleteUnidadeModal(unidade.id, unidade.nome, empresa.nome);
-                                      }}
-                                      className="p-1 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-all duration-200 hover:scale-110"
-                                      title="Excluir unidade"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
+                                    {unidade.id_unidade === "001" ? (
+                                      <div className="p-1 text-gray-500 cursor-not-allowed" title="Matriz não pode ser excluída">
+                                        <Trash2 className="w-3 h-3 opacity-30" />
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenDeleteUnidadeModal(unidade.id, unidade.nome, empresa.nome, empresa.id);
+                                        }}
+                                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-all duration-200 hover:scale-110"
+                                        title="Excluir unidade"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               </div>
