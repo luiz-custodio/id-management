@@ -17,7 +17,7 @@ SUBPASTAS_NUMERADAS = [
     "12 Estudos e Análises",
 ]
 
-CCEE_SUBCODIGOS = ["CFZ003","CFZ004","GFN001","LFN001","LFRCA001","LFRES001","PEN001","SUM001","DCT006"]
+CCEE_SUBCODIGOS = ["CFZ003","CFZ004","GFN001","LFN001","LFRCA001","LFRES001","PEN001","SUM001","DCT006","BOLETOCA","ND"]
 
 def montar_estrutura_unidade(base_dir: str, empresa_rotulo: str, unidade_rotulo: str) -> dict:
     base = Path(base_dir)

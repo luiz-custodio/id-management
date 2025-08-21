@@ -69,6 +69,7 @@ const EmpresasPage: React.FC = () => {
   const [selectedEmpresaNome, setSelectedEmpresaNome] = useState<string>('');
   const [selectedUnidadeNome, setSelectedUnidadeNome] = useState<string>('');
   const [tipoArquivo, setTipoArquivo] = useState<string>('');
+  const [cceeSubtipo, setCceeSubtipo] = useState<string>(''); // Novo estado para subtipo CCEE
   const [mesAno, setMesAno] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
   const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
@@ -96,17 +97,36 @@ const EmpresasPage: React.FC = () => {
     return `${year}-${month}`;
   };
 
-  // Tipos de arquivo disponíveis
+  // Tipos de arquivo disponíveis - data obrigatória exceto Estudo e todos os DOC-*
   const tiposArquivo = [
     { value: 'FAT', label: 'Fatura', requireDate: true },
     { value: 'NE-CP', label: 'Nota de Energia - CP', requireDate: true },
     { value: 'NE-LP', label: 'Nota de Energia - LP', requireDate: true },
     { value: 'REL', label: 'Relatório', requireDate: true },
-    { value: 'EST', label: 'Estudo', requireDate: true },
+    { value: 'RES', label: 'Resumo', requireDate: true },
+    { value: 'EST', label: 'Estudo', requireDate: false },
     { value: 'DOC-CTR', label: 'Documento - Contrato', requireDate: false },
     { value: 'DOC-ADT', label: 'Documento - Aditivo', requireDate: false },
     { value: 'DOC-CAD', label: 'Documento - Cadastro', requireDate: false },
+    { value: 'DOC-PRO', label: 'Documento - Procuração', requireDate: false },
+    { value: 'DOC-CAR', label: 'Documento - Carta Denúncia', requireDate: false },
+    { value: 'DOC-COM', label: 'Documento - Comunicado', requireDate: false },
+    { value: 'DOC-LIC', label: 'Documento - Licença', requireDate: false },
     { value: 'CCEE', label: 'CCEE - DRI', requireDate: true },
+  ];
+
+  // Subtipos CCEE disponíveis
+  const cceeSubtipos = [
+    { value: 'CFZ003', label: 'CFZ003' },
+    { value: 'CFZ004', label: 'CFZ004' },
+    { value: 'GFN001', label: 'GFN001' },
+    { value: 'LFN001', label: 'LFN001' },
+    { value: 'LFRCA001', label: 'LFRCA001' },
+    { value: 'LFRES001', label: 'LFRES001' },
+    { value: 'PEN001', label: 'PEN001' },
+    { value: 'SUM001', label: 'SUM001' },
+    { value: 'BOLETOCA', label: 'BOLETOCA' },
+    { value: 'ND', label: 'ND' },
   ];
 
   const fetchEmpresas = async () => {
@@ -126,6 +146,7 @@ const EmpresasPage: React.FC = () => {
   // Handler para mudança de tipo de arquivo
   const handleTipoArquivoChange = (valor: string) => {
     setTipoArquivo(valor);
+    setCceeSubtipo(''); // Limpa subtipo CCEE quando muda tipo
     setMostrarDataOpcional(false); // Reset do campo opcional
     setArquivosAnalisados([]); // Reset da análise automática
     
@@ -147,6 +168,7 @@ const EmpresasPage: React.FC = () => {
     if (ativado) {
       // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
       setTipoArquivo('');
+      setCceeSubtipo('');
       setMesAno('');
       setMostrarDataOpcional(false);
       
@@ -234,12 +256,12 @@ const EmpresasPage: React.FC = () => {
       }
     }
     
-    // Se não detectou nada, tentar padrões genéricos
+    // Se não detectou nada, deixar vazio para seleção manual
     else {
-      tipoDetectado = 'FAT'; // Padrão
-      dataDetectada = getCurrentMonth();
-      confianca = 30;
-      motivo = 'Tipo não identificado - usando Fatura como padrão';
+      tipoDetectado = ''; // Vazio - usuário deve escolher manualmente
+      dataDetectada = '';
+      confianca = 0;
+      motivo = 'Tipo não identificado - seleção manual necessária';
     }
 
     return {
@@ -564,6 +586,18 @@ const EmpresasPage: React.FC = () => {
       return;
     }
 
+    // Se auto-detecção ativa, verificar se há arquivos não identificados
+    if (autoDeteccao && arquivosAnalisados.some(analise => !analise.tipoDetectado)) {
+      setError('Alguns arquivos não foram identificados automaticamente. Desative a detecção automática e selecione os tipos manualmente.');
+      return;
+    }
+
+    // Verificar se CCEE precisa de subtipo
+    if (!autoDeteccao && tipoArquivo === 'CCEE' && !cceeSubtipo) {
+      setError('Selecione um subtipo CCEE');
+      return;
+    }
+
     try {
       setUploading(true);
       setError(null);
@@ -595,10 +629,13 @@ const EmpresasPage: React.FC = () => {
           return;
         }
         
+        // Para CCEE, combina tipo e subtipo
+        const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
+        
         // Modo manual normal
         preview = await api.previewUpload(
           parseInt(selectedUnidade), 
-          tipoArquivo, 
+          tipoFinal, 
           mesAno || null, 
           descricao || null, 
           fileList.files
@@ -624,6 +661,18 @@ const EmpresasPage: React.FC = () => {
     // Verificar se precisa de tipo manual ou auto-detecção
     if (!autoDeteccao && !tipoArquivo) {
       setError('Selecione um tipo de arquivo ou ative a detecção automática');
+      return;
+    }
+
+    // Se auto-detecção ativa, verificar se há arquivos não identificados
+    if (autoDeteccao && arquivosAnalisados.some(analise => !analise.tipoDetectado)) {
+      setError('Alguns arquivos não foram identificados automaticamente. Desative a detecção automática e selecione os tipos manualmente.');
+      return;
+    }
+
+    // Verificar se CCEE precisa de subtipo
+    if (!autoDeteccao && tipoArquivo === 'CCEE' && !cceeSubtipo) {
+      setError('Selecione um subtipo CCEE');
       return;
     }
 
@@ -655,13 +704,16 @@ const EmpresasPage: React.FC = () => {
           return;
         }
         
+        // Para CCEE, combina tipo e subtipo
+        const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
+        
         // Executa o upload manual normal
         const fileList = new DataTransfer();
         selectedFiles.forEach(file => fileList.items.add(file));
         
         result = await api.executarUpload(
           parseInt(selectedUnidade), 
-          tipoArquivo, 
+          tipoFinal, 
           mesAno || null, 
           descricao || null, 
           fileList.files
@@ -672,6 +724,7 @@ const EmpresasPage: React.FC = () => {
       setSelectedFiles([]);
       setArquivosAnalisados([]);
       setTipoArquivo('');
+      setCceeSubtipo('');
       setMesAno('');
       setDescricao('');
       setMostrarDataOpcional(false);
@@ -834,6 +887,19 @@ const EmpresasPage: React.FC = () => {
                 Detecção automática
               </span>
             </label>
+            
+            {/* Regras de detecção automática (aparece quando ativada) */}
+            {autoDeteccao && (
+              <div className="mt-2 ml-5 text-xs text-slate-500 leading-relaxed">
+                <div className="opacity-75">
+                  <strong className="text-slate-400">Regras de detecção:</strong><br/>
+                  • <span className="text-blue-400">Faturas:</span> apenas data YYYY-MM no nome<br/>
+                  • <span className="text-green-400">Notas:</span> "nota", "CP" ou "LP" no nome<br/>
+                  • <span className="text-yellow-400">Relatórios:</span> "relatório" + data "JUL-25"<br/>
+                  • <span className="text-slate-400">Não identificado:</span> seleção manual necessária
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tipo de Arquivo - desabilitado quando auto-detecção ativa */}
@@ -863,6 +929,39 @@ const EmpresasPage: React.FC = () => {
               ))}
             </select>
           </div>
+
+          {/* Subtipo CCEE - aparece apenas quando CCEE é selecionado */}
+          {tipoArquivo === 'CCEE' && (
+            <div className="animate-fade-in-down">
+              <label className="block text-xs text-blue-300 mb-2 font-medium">
+                Subtipo CCEE {autoDeteccao && <span className="text-slate-500 font-normal">(automático)</span>}
+              </label>
+              <select 
+                value={cceeSubtipo}
+                onChange={(e) => setCceeSubtipo(e.target.value)}
+                disabled={autoDeteccao}
+                className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 cursor-pointer appearance-none bg-right bg-no-repeat backdrop-blur-sm ${
+                  autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundSize: '1.5em 1.5em',
+                  paddingRight: '2.5rem'
+                }}
+              >
+                <option value="">Selecione o subtipo...</option>
+                {cceeSubtipos.map(subtipo => (
+                  <option key={subtipo.value} value={subtipo.value} className="py-2">
+                    {subtipo.label}
+                  </option>
+                ))}
+              </select>
+              {!cceeSubtipo && (
+                <p className="text-xs text-amber-400 mt-1">* Subtipo obrigatório para CCEE</p>
+              )}
+            </div>
+          )}
 
           {/* Campo de Mês/Ano condicional */}
           {tipoArquivo && (
@@ -1030,7 +1129,9 @@ const EmpresasPage: React.FC = () => {
                         </span>
                       </div>
                       <div className="text-blue-300">
-                        <span className="font-medium">{analise.tipoDetectado}</span> - {analise.dataDetectada}
+                        <span className="font-medium">
+                          {analise.tipoDetectado || 'Não identificado'}
+                        </span> - {analise.dataDetectada || 'Data não detectada'}
                       </div>
                       <div className="text-slate-400 text-xs mt-1">
                         {analise.motivo}

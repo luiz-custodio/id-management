@@ -15,6 +15,7 @@
   th, td { border: 1px solid #e5e7eb; padding: 8px 10px; vertical-align: top; }
   th { background: #f1f5f9; text-align: left; }
   .note { font-size: 12px; color:#555; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; border:1px solid #e0e7ff; font-size:12px; }
 </style>
 </head>
 <body>
@@ -54,10 +55,11 @@
       <tr><td><strong>FAT</strong></td><td>Fatura mensal</td><td><code>FAT-AAAA-MM</code></td><td>Faturas/</td><td><code>FAT-2025-01.pdf</code></td></tr>
       <tr><td><strong>NE-CP</strong></td><td>Nota de Energia (Curto Prazo)</td><td><code>NE-CP-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-CP-2025-02.pdf</code></td></tr>
       <tr><td><strong>NE-LP</strong></td><td>Nota de Energia (Longo Prazo)</td><td><code>NE-LP-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-LP-2025-02.pdf</code></td></tr>
-      <tr><td><strong>REL</strong></td><td>Relatório / Resultado</td><td><code>REL-AAAA-MM</code></td><td>Relatórios e Resultados/</td><td><code>REL-2025-01.pdf</code></td></tr>
+      <tr><td><strong>REL</strong></td><td>Relatório</td><td><code>REL-AAAA-MM</code></td><td>Relatórios e Resultados/</td><td><code>REL-2025-01.pdf</code></td></tr>
+      <tr><td><strong>RES</strong></td><td>Resumo</td><td><code>RES-AAAA-MM</code></td><td>Relatórios e Resultados/</td><td><code>RES-2025-01.pdf</code></td></tr>
       <tr><td><strong>EST</strong></td><td>Estudo / Análise</td><td><code>EST-AAAA-MM</code></td><td>Estudos e Análises/</td><td><code>EST-2025-02.pdf</code></td></tr>
       <tr><td><strong>DOC-&lt;SUB&gt;</strong></td><td>Documentos do Cliente</td><td>ver subtipos abaixo</td><td>Documentos do Cliente/</td><td><code>DOC-CTR-2025.pdf</code>; <code>DOC-ADT-2025-03-18.pdf</code></td></tr>
-      <tr><td><strong>CCEE-&lt;COD&gt;&lt;SUB&gt;</strong></td><td>Relatórios CCEE com subcódigo</td><td><code>CCEE-&lt;COD&gt;&lt;SUB&gt;-AAAA-MM[-Vn][-X]</code></td><td>CCEE - DRI/&lt;COD&gt;&lt;SUB&gt;/</td><td><code>CCEE-CFZ003-2025-04.pdf</code></td></tr>
+      <tr><td><strong>CCEE-&lt;COD&gt;</strong></td><td>Relatórios CCEE (com ou sem subcódigo)</td><td><code>CCEE-&lt;COD&gt;-AAAA-MM[-Vn][-X]</code></td><td>CCEE - DRI/&lt;COD&gt;/</td><td><code>CCEE-CFZ003-2025-04.pdf</code></td></tr>
     </tbody>
   </table>
 
@@ -69,7 +71,7 @@
       <tr><td><strong>ADT</strong></td><td>Aditivo</td><td><code>DOC-ADT-AAAA-MM-DD</code></td><td><code>DOC-ADT-2025-03-18.pdf</code></td></tr>
       <tr><td><strong>CAD</strong></td><td>Cadastro</td><td><code>DOC-CAD-AAAA</code></td><td><code>DOC-CAD-2025.pdf</code></td></tr>
       <tr><td><strong>PRO</strong></td><td>Procuração</td><td><code>DOC-PRO-AAAA[-Vn]</code></td><td><code>DOC-PRO-2025-V2.docx</code></td></tr>
-      <tr><td><strong>CAR</strong></td><td>Carta Denuncia</td><td><code>DOC-CAR-AAAA</code></td><td><code>DOC-CAR-2025.pdf</code></td></tr>
+      <tr><td><strong>CAR</strong></td><td>Carta Denúncia</td><td><code>DOC-CAR-AAAA</code></td><td><code>DOC-CAR-2025.pdf</code></td></tr>
       <tr><td><strong>COM</strong></td><td>Comunicado/Ofício</td><td><code>DOC-COM-AAAA-MM[-NNN]</code></td><td><code>DOC-COM-2025-08-001.pdf</code></td></tr>
       <tr><td><strong>LIC</strong></td><td>Licença/Autorização</td><td><code>DOC-LIC-AAAA[-MM[-DD]]</code></td><td><code>DOC-LIC-2025-06.pdf</code></td></tr>
     </tbody>
@@ -77,24 +79,48 @@
   <div class="note">Regras rápidas (DOC): jurídico → prefira data completa; vários no mês → -001, -002; revisões → -V1, -V2.</div>
 
   <h2>5) CCEE com subcódigo (cada tipo em uma pasta)</h2>
-  <p><strong>TAG do tipo:</strong> <code>CCEE-&lt;COD&gt;&lt;SUB&gt;</code>, onde &lt;COD&gt; ∈ {CFZ, GFN, LFN, LFRCA, LFRES, PEN, SUM} e &lt;SUB&gt; são 3 dígitos (001, 002, 003…).</p>
-  <p><strong>Nome do arquivo:</strong> <code>CCEE-&lt;COD&gt;&lt;SUB&gt;-AAAA-MM[-Vn][-X][ - Descritivo].pdf</code></p>
+  <p><strong>TAG do tipo:</strong> <code>CCEE-&lt;COD&gt;</code>, onde &lt;COD&gt; ∈ {CFZ, GFN, LFN, LFRCA, LFRES, PEN, SUM, BOLETOCA, ND}. Alguns possuem sufixo numérico (003, 004, 001 etc.), mas <strong>BOLETOCA</strong> e <strong>ND</strong> não utilizam sufixo.</p>
+  <p><span class="chip">Novos códigos incluídos: BOLETOCA, ND</span></p>
+  <p><strong>Nome do arquivo:</strong> <code>CCEE-&lt;COD&gt;-AAAA-MM[-Vn][-X][ - Descritivo].pdf</code></p>
   <p><strong>Exemplos e pastas:</strong></p>
   <pre><code>CCEE - DRI/CFZ003/CCEE-CFZ003-2025-04.pdf
 CCEE - DRI/CFZ004/CCEE-CFZ004-2025-04.pdf
 CCEE - DRI/GFN001/CCEE-GFN001-2025-04-V2.pdf
-CCEE - DRI/SUM001/CCEE-SUM001-2025-04-C.pdf</code></pre>
+CCEE - DRI/LFN001/CCEE-LFN001-2025-05.pdf
+CCEE - DRI/LFRCA001/CCEE-LFRCA001-2025-04.pdf
+CCEE - DRI/LFRES001/CCEE-LFRES001-2025-04.pdf
+CCEE - DRI/PEN001/CCEE-PEN001-2025-04.pdf
+CCEE - DRI/SUM001/CCEE-SUM001-2025-04-C.pdf
+CCEE - DRI/BOLETOCA/CCEE-BOLETOCA-2025-04.pdf
+CCEE - DRI/ND/CCEE-ND-2025-04.pdf</code></pre>
 
   <h2>6) Regex de validação (opcional)</h2>
   <p>Use estas expressões para validar nomes (aceitam extensões comuns e, quando indicado, sufixo humano).</p>
   <pre><code>FAT  : ^FAT-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 NE   : ^NE-(CP|LP)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 REL  : ^REL-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
+RES  : ^RES-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 EST  : ^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 DOC  : ^DOC-[A-Z]{3}-.*\.(pdf|docx|xlsx)$
-CCEE : ^CCEE-(?:CFZ|GFN|LFN|LFRCA|LFRES|PEN|SUM)\d{3}-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$</code></pre>
+CCEE : ^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$</code></pre>
 
-  <h2>7) Boas práticas</h2>
+  <h2>7) Dicionário de siglas CCEE (&lt;COD&gt;)</h2>
+  <table>
+    <thead><tr><th>&lt;COD&gt;</th><th>Significado breve</th><th>Observações</th></tr></thead>
+    <tbody>
+      <tr><td><strong>CFZ</strong></td><td>Conta de Energia – Faixa Z (ex.: CFZ003)</td><td>Subcódigo numérico de 3 dígitos por cliente/objeto.</td></tr>
+      <tr><td><strong>GFN</strong></td><td>Garantia Física – Energia Nova</td><td>Relatórios de lastro/garantia no ACL.</td></tr>
+      <tr><td><strong>LFN</strong></td><td>Lastro – Energia Nova</td><td>Documentos de lastro.</td></tr>
+      <tr><td><strong>LFRCA</strong></td><td>Lastro – Reserva (CA)</td><td>Categoria específica de reserva (CA).</td></tr>
+      <tr><td><strong>LFRES</strong></td><td>Lastro – Reserva (ES)</td><td>Categoria específica de reserva (ES).</td></tr>
+      <tr><td><strong>PEN</strong></td><td>Penalidades</td><td>Autos, notificações e afins.</td></tr>
+      <tr><td><strong>SUM</strong></td><td>Sumários/Resumo</td><td>Consolidações mensais.</td></tr>
+      <tr><td><strong>BOLETOCA</strong></td><td>Boleto – Categoria CA</td><td>Não possui numeração de 3 dígitos. Pasta única “BOLETOCA/”.</td></tr>
+      <tr><td><strong>ND</strong></td><td>Nota de Débito</td><td>Não possui numeração de 3 dígitos. Pasta única “ND/”.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>8) Boas práticas</h2>
   <ul>
     <li>Arquivos sempre começam pela TAG.</li>
     <li>Pastas de Empresa/Unidade: “Nome - ID”.</li>
