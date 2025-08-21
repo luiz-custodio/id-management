@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func
@@ -9,9 +9,11 @@ from .fs_utils import montar_estrutura_unidade
 from .organizer import preview_moves, apply_moves
 import os
 import re
+import shutil
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
+from datetime import datetime
 
 app = FastAPI(title="IDS Manager API", version="0.3.0")
 
@@ -28,6 +30,29 @@ SUBPASTAS_PADRAO = [
     "CCEE - DRI",  # Dentro desta, criar subpastas por tipo de CCEE
 ]
 
+# Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
+TIPO_PARA_PASTA = {
+    "FAT": "Faturas",
+    "NE-CP": "Notas de Energia",
+    "NE-LP": "Notas de Energia", 
+    "REL": "Relatórios e Resultados",
+    "EST": "Estudos e Análises",
+    "DOC-CTR": "Documentos do Cliente",
+    "DOC-ADT": "Documentos do Cliente",
+    "DOC-CAD": "Documentos do Cliente",
+    "DOC-PRO": "Documentos do Cliente",
+    "DOC-CAR": "Documentos do Cliente",
+    "DOC-COM": "Documentos do Cliente",
+    "DOC-LIC": "Documentos do Cliente",
+    "CCEE": "CCEE - DRI"  # Será refinado depois baseado no subcódigo
+}
+
+# Subpastas específicas para CCEE (cada tipo tem sua pasta)
+CCEE_SUBPASTAS = [
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001", 
+    "LFRES001", "PEN001", "SUM001"
+]
+
 # CORS liberado para desenvolvimento
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +62,68 @@ app.add_middleware(
 
 # cria tabelas se não existirem
 Base.metadata.create_all(bind=engine)
+
+def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[str], extensao: str) -> str:
+    """
+    Gera nome de arquivo baseado no dicionário de TAGs
+    """
+    agora = datetime.now()
+    
+    # Para tipos que requerem data
+    if tipo in ["FAT", "NE-CP", "NE-LP", "REL", "EST", "CCEE"]:
+        if not ano_mes:
+            # Se não fornecido, usa o mês atual
+            ano_mes = agora.strftime("%Y-%m")
+        nome_base = f"{tipo}-{ano_mes}"
+    
+    # Para documentos (DOC-*)
+    elif tipo.startswith("DOC-"):
+        # DOC usa formato: DOC-SUBTIPO-AAAA[-MM[-DD]]
+        ano = agora.strftime("%Y")
+        nome_base = f"{tipo}-{ano}"
+    
+    else:
+        # Tipo não reconhecido, usa formato básico
+        nome_base = tipo
+    
+    # Adiciona descrição se fornecida
+    if descricao and descricao.strip():
+        nome_base += f" - {descricao.strip()}"
+    
+    return f"{nome_base}.{extensao}"
+
+def obter_pasta_destino(tipo: str, empresa_nome: str, empresa_id: str, unidade_nome: str, unidade_id: str) -> Path:
+    """
+    Determina a pasta de destino baseada no tipo de arquivo
+    """
+    # Pasta base da empresa e unidade
+    empresa_folder = BASE_CLIENTES_PATH / f"{empresa_nome} - {empresa_id}"
+    unidade_folder = empresa_folder / f"{unidade_nome} - {unidade_id}"
+    
+    # Determina subpasta baseada no tipo
+    if tipo == "CCEE":
+        # Para CCEE, precisa determinar o subcódigo
+        # Por enquanto, coloca na pasta base do CCEE
+        return unidade_folder / "CCEE - DRI"
+    
+    elif tipo in TIPO_PARA_PASTA:
+        return unidade_folder / TIPO_PARA_PASTA[tipo]
+    
+    else:
+        # Se não encontrar mapeamento, coloca em Documentos do Cliente
+        return unidade_folder / "Documentos do Cliente"
+
+def validar_extensao(filename: str) -> str:
+    """
+    Valida e extrai a extensão do arquivo
+    """
+    extensoes_permitidas = ['pdf', 'xlsx', 'csv', 'docx']
+    extensao = filename.split('.')[-1].lower()
+    
+    if extensao not in extensoes_permitidas:
+        raise HTTPException(400, f"Extensão não permitida. Use: {', '.join(extensoes_permitidas)}")
+    
+    return extensao
 
 def get_db():
     db = SessionLocal()
@@ -287,6 +374,199 @@ def listar_itens(
     if q:
         query = query.filter(models.Item.titulo_visivel.ilike(f"%{q}%"))
     return query.order_by(models.Item.unidade_id, models.Item.id_item).all()
+
+# =====================
+# UPLOAD DE ARQUIVOS
+# =====================
+
+@app.post("/upload/preview")
+async def preview_upload(
+    unidade_id: int = Form(...),
+    tipo_arquivo: str = Form(...),
+    mes_ano: Optional[str] = Form(None),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Preview do upload: mostra onde cada arquivo será salvo e como será renomeado
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    preview_list = []
+    
+    for file in files:
+        try:
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                "caminho_completo": str(caminho_completo.relative_to(BASE_CLIENTES_PATH)),
+                "tipo": tipo_arquivo,
+                "empresa": f"{empresa.nome} - {empresa.id_empresa}",
+                "unidade": f"{unidade.nome} - {unidade.id_unidade}",
+                "valido": True,
+                "erro": None
+            })
+            
+        except Exception as e:
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "pasta_destino": None,
+                "caminho_completo": None,
+                "tipo": tipo_arquivo,
+                "empresa": f"{empresa.nome} - {empresa.id_empresa}",
+                "unidade": f"{unidade.nome} - {unidade.id_unidade}",
+                "valido": False,
+                "erro": str(e)
+            })
+    
+    return {
+        "preview": preview_list,
+        "total_arquivos": len(files),
+        "validos": len([p for p in preview_list if p["valido"]]),
+        "empresa_info": f"{empresa.nome} - {empresa.id_empresa}",
+        "unidade_info": f"{unidade.nome} - {unidade.id_unidade}"
+    }
+
+@app.post("/upload/executar")
+async def executar_upload(
+    unidade_id: int = Form(...),
+    tipo_arquivo: str = Form(...),
+    mes_ano: Optional[str] = Form(None),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Executa o upload dos arquivos, salvando-os nas pastas corretas com nomes padronizados
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    resultados = []
+    arquivos_salvos = 0
+    
+    for file in files:
+        try:
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Garante que a pasta existe
+            pasta_destino.mkdir(parents=True, exist_ok=True)
+            
+            # Para CCEE, cria subpastas se necessário
+            if tipo_arquivo == "CCEE":
+                for subpasta in CCEE_SUBPASTAS:
+                    (pasta_destino / subpasta).mkdir(exist_ok=True)
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            # Verifica se arquivo já existe
+            if caminho_completo.exists():
+                # Adiciona timestamp para evitar conflito
+                timestamp = datetime.now().strftime("_%H%M%S")
+                nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                caminho_completo = pasta_destino / novo_nome
+            
+            # Salva o arquivo
+            with open(caminho_completo, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            # Cria registro no banco (Item)
+            try:
+                id_item = build_item_id(tipo_arquivo, mes_ano)
+                titulo_visivel = descricao or novo_nome
+                
+                item = models.Item(
+                    id_item=id_item,
+                    tipo=tipo_arquivo,
+                    ano_mes=mes_ano,
+                    titulo_visivel=titulo_visivel,
+                    caminho_arquivo=str(caminho_completo),
+                    unidade_id=unidade_id
+                )
+                db.add(item)
+                db.flush()
+                
+            except Exception as e:
+                print(f"Erro ao criar item no banco: {e}")
+                # Continua mesmo se não conseguir criar o item
+            
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "caminho_salvo": str(caminho_completo.relative_to(BASE_CLIENTES_PATH)),
+                "sucesso": True,
+                "erro": None
+            })
+            
+            arquivos_salvos += 1
+            
+        except Exception as e:
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "caminho_salvo": None,
+                "sucesso": False,
+                "erro": str(e)
+            })
+    
+    # Commit das mudanças no banco
+    try:
+        db.commit()
+    except Exception as e:
+        print(f"Erro ao salvar no banco: {e}")
+        db.rollback()
+    
+    return {
+        "resultados": resultados,
+        "total_arquivos": len(files),
+        "arquivos_salvos": arquivos_salvos,
+        "empresa_info": f"{empresa.nome} - {empresa.id_empresa}",
+        "unidade_info": f"{unidade.nome} - {unidade.id_unidade}",
+        "message": f"Upload concluído: {arquivos_salvos}/{len(files)} arquivos salvos"
+    }
 
 # =====================
 # UTILITÁRIOS & ORGANIZADOR

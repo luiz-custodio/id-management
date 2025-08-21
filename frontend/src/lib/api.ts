@@ -11,6 +11,43 @@ export type Preview = {
   motivo?: string;
 };
 
+export type UploadPreview = {
+  arquivo_original: string;
+  novo_nome: string | null;
+  pasta_destino: string | null;
+  caminho_completo: string | null;
+  tipo: string;
+  empresa: string;
+  unidade: string;
+  valido: boolean;
+  erro: string | null;
+};
+
+export type UploadPreviewResponse = {
+  preview: UploadPreview[];
+  total_arquivos: number;
+  validos: number;
+  empresa_info: string;
+  unidade_info: string;
+};
+
+export type UploadResult = {
+  arquivo_original: string;
+  novo_nome: string | null;
+  caminho_salvo: string | null;
+  sucesso: boolean;
+  erro: string | null;
+};
+
+export type UploadResponse = {
+  resultados: UploadResult[];
+  total_arquivos: number;
+  arquivos_salvos: number;
+  empresa_info: string;
+  unidade_info: string;
+  message: string;
+};
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_BASE}${url}`, {
     headers: { "Content-Type": "application/json" },
@@ -22,8 +59,6 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   }
   return r.json();
 }
-
-const API_URL = "http://localhost:8000";
 
 export const api = {
   listarEmpresas() {
@@ -152,5 +187,51 @@ export const api = {
 
     // A API retorna 204 (No Content), então não precisa fazer .json()
     return;
+  },
+  async previewUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList): Promise<UploadPreviewResponse> {
+    const formData = new FormData();
+    formData.append('unidade_id', unidadeId.toString());
+    formData.append('tipo_arquivo', tipoArquivo);
+    if (mesAno) formData.append('mes_ano', mesAno);
+    if (descricao) formData.append('descricao', descricao);
+    
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    const response = await fetch(`${API_BASE}/upload/preview`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Erro ao fazer preview do upload');
+    }
+
+    return response.json();
+  },
+  async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append('unidade_id', unidadeId.toString());
+    formData.append('tipo_arquivo', tipoArquivo);
+    if (mesAno) formData.append('mes_ano', mesAno);
+    if (descricao) formData.append('descricao', descricao);
+    
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    const response = await fetch(`${API_BASE}/upload/executar`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Erro ao fazer upload');
+    }
+
+    return response.json();
   }
 };
