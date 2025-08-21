@@ -211,6 +211,31 @@ export const api = {
 
     return response.json();
   },
+  async previewUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null): Promise<UploadPreviewResponse> {
+    const formData = new FormData();
+    formData.append('unidade_id', unidadeId.toString());
+    formData.append('modo', 'AUTO');
+    if (descricao) formData.append('descricao', descricao);
+    
+    // Envia arquivo e metadados de análise
+    filesWithAnalysis.forEach((item, index) => {
+      formData.append('files', item.file);
+      formData.append(`tipo_${index}`, item.tipoDetectado);
+      formData.append(`data_${index}`, item.dataDetectada);
+    });
+
+    const response = await fetch(`${API_BASE}/upload/preview-auto`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Erro ao fazer preview do upload automático');
+    }
+
+    return response.json();
+  },
   async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('unidade_id', unidadeId.toString());
@@ -230,6 +255,41 @@ export const api = {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.detail || 'Erro ao fazer upload');
+    }
+
+    return response.json();
+  },
+  async executarUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append('unidade_id', unidadeId.toString());
+    formData.append('modo', 'AUTO');
+    if (descricao) formData.append('descricao', descricao);
+    
+    // Envia arquivo e metadados de análise
+    filesWithAnalysis.forEach((item, index) => {
+      formData.append('files', item.file);
+      formData.append(`tipo_${index}`, item.tipoDetectado);
+      formData.append(`data_${index}`, item.dataDetectada);
+    });
+
+    const response = await fetch(`${API_BASE}/upload/executar-auto`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || 'Erro ao executar upload automático');
+    }
+
+    return response.json();
+  },
+
+  async getConfig(): Promise<{ basePath: string; version: string }> {
+    const response = await fetch(`${API_BASE}/config`);
+    
+    if (!response.ok) {
+      throw new Error('Erro ao buscar configuração');
     }
 
     return response.json();

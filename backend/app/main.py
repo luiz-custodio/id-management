@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func
@@ -14,11 +14,15 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente
+load_dotenv()
 
 app = FastAPI(title="IDS Manager API", version="0.3.0")
 
-# Caminho base para todas as operações de pastas de clientes
-BASE_CLIENTES_PATH = Path("C:/Users/User/Documents/PROJETOS/id-management/cliente")
+# Caminho base para todas as operações de pastas de clientes (configurável via .env)
+BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", "C:/Users/User/Documents/PROJETOS/id-management/cliente"))
 
 # Estrutura padrão de subpastas para cada unidade (baseado em ABASTECEDORA MIRELA)
 SUBPASTAS_PADRAO = [
@@ -186,6 +190,14 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
     db.commit()
     db.refresh(emp)
     return emp
+
+@app.get("/config")
+def get_config():
+    """Retorna configurações do sistema"""
+    return {
+        "basePath": str(BASE_CLIENTES_PATH),
+        "version": "0.3.0"
+    }
 
 @app.get("/empresas", response_model=list[schemas.EmpresaOut])
 def listar_empresas(db: Session = Depends(get_db)):
@@ -379,6 +391,84 @@ def listar_itens(
 # UPLOAD DE ARQUIVOS
 # =====================
 
+@app.post("/upload/preview-auto")
+async def preview_upload_auto(
+    request: Request,
+    unidade_id: int = Form(...),
+    modo: str = Form(...),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Preview do upload automático: cada arquivo tem seu próprio tipo e data
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    preview_list = []
+    form_data = await request.form()
+    
+    for i, file in enumerate(files):
+        try:
+            # Pega tipo e data específicos para este arquivo
+            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
+            mes_ano = form_data.get(f'data_{i}')
+            
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo específico
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                "caminho_completo": str(caminho_completo.relative_to(BASE_CLIENTES_PATH)),
+                "tipo": tipo_arquivo,
+                "empresa": empresa.nome,
+                "unidade": unidade.nome,
+                "valido": True,
+                "erro": None
+            })
+            
+        except Exception as e:
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "pasta_destino": None,
+                "caminho_completo": None,
+                "tipo": form_data.get(f'tipo_{i}', 'UNKNOWN'),
+                "empresa": empresa.nome,
+                "unidade": unidade.nome,
+                "valido": False,
+                "erro": str(e)
+            })
+    
+    return {
+        "preview": preview_list,
+        "total_arquivos": len(files),
+        "validos": sum(1 for p in preview_list if p["valido"]),
+        "empresa_info": f"{empresa.nome} ({empresa.id_empresa})",
+        "unidade_info": f"{unidade.nome} ({unidade.id_unidade})"
+    }
+
 @app.post("/upload/preview")
 async def preview_upload(
     unidade_id: int = Form(...),
@@ -450,6 +540,88 @@ async def preview_upload(
         "validos": len([p for p in preview_list if p["valido"]]),
         "empresa_info": f"{empresa.nome} - {empresa.id_empresa}",
         "unidade_info": f"{unidade.nome} - {unidade.id_unidade}"
+    }
+
+@app.post("/upload/executar-auto")
+async def executar_upload_auto(
+    request: Request,
+    unidade_id: int = Form(...),
+    modo: str = Form(...),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Executa upload automático: cada arquivo com seu próprio tipo e data
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    resultados = []
+    arquivos_salvos = 0
+    form_data = await request.form()
+    
+    for i, file in enumerate(files):
+        try:
+            # Pega tipo e data específicos para este arquivo
+            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
+            mes_ano = form_data.get(f'data_{i}')
+            
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo específico
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Garante que a pasta existe
+            pasta_destino.mkdir(parents=True, exist_ok=True)
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            # Salva o arquivo
+            conteudo = await file.read()
+            with open(caminho_completo, "wb") as f:
+                f.write(conteudo)
+            
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                "sucesso": True,
+                "tipo": tipo_arquivo,
+                "erro": None
+            })
+            
+            arquivos_salvos += 1
+            
+        except Exception as e:
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "pasta_destino": None,
+                "sucesso": False,
+                "tipo": form_data.get(f'tipo_{i}', 'UNKNOWN'),
+                "erro": str(e)
+            })
+    
+    return {
+        "resultados": resultados,
+        "total_arquivos": len(files),
+        "arquivos_salvos": arquivos_salvos,
+        "message": f"Upload automático concluído: {arquivos_salvos}/{len(files)} arquivos salvos com sucesso"
     }
 
 @app.post("/upload/executar")
