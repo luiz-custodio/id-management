@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func
@@ -14,43 +14,54 @@ from pathlib import Path
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente
+load_dotenv()
 
 app = FastAPI(title="IDS Manager API", version="0.3.0")
 
-# Caminho base para todas as operações de pastas de clientes
-BASE_CLIENTES_PATH = Path("C:/Users/User/Documents/PROJETOS/id-management/cliente")
+# Caminho base para todas as operações de pastas de clientes (configurável via .env)
+BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", "C:/Users/User/Documents/PROJETOS/id-management/cliente"))
 
-# Estrutura padrão de subpastas para cada unidade (baseado em ABASTECEDORA MIRELA)
+# Estrutura padrão de subpastas para cada unidade (com numeração para ordenação)
 SUBPASTAS_PADRAO = [
-    "Faturas",
-    "Notas de Energia",  # CP e LP juntos aqui
-    "Relatórios e Resultados",
-    "Estudos e Análises",
-    "Documentos do Cliente",
-    "CCEE - DRI",  # Dentro desta, criar subpastas por tipo de CCEE
+    "01 Relatórios e Resultados",
+    "02 Faturas", 
+    "03 Notas de Energia",
+    "04 CCEE - DRI",
+    "05 BM Energia",
+    "06 Documentos do Cliente",
+    "07 Projetos",
+    "08 Comercializadoras",
+    "09 CCEE - Modelagem",
+    "10 Distribuidora",
+    "11 ICMS",
+    "12 Estudos e Análises"
 ]
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
 TIPO_PARA_PASTA = {
-    "FAT": "Faturas",
-    "NE-CP": "Notas de Energia",
-    "NE-LP": "Notas de Energia", 
-    "REL": "Relatórios e Resultados",
-    "EST": "Estudos e Análises",
-    "DOC-CTR": "Documentos do Cliente",
-    "DOC-ADT": "Documentos do Cliente",
-    "DOC-CAD": "Documentos do Cliente",
-    "DOC-PRO": "Documentos do Cliente",
-    "DOC-CAR": "Documentos do Cliente",
-    "DOC-COM": "Documentos do Cliente",
-    "DOC-LIC": "Documentos do Cliente",
-    "CCEE": "CCEE - DRI"  # Será refinado depois baseado no subcódigo
+    "FAT": "02 Faturas",
+    "NE-CP": "03 Notas de Energia",
+    "NE-LP": "03 Notas de Energia", 
+    "REL": "01 Relatórios e Resultados",
+    "RES": "01 Relatórios e Resultados",  # Resumo vai para mesma pasta
+    "EST": "12 Estudos e Análises",
+    "DOC-CTR": "06 Documentos do Cliente",
+    "DOC-ADT": "06 Documentos do Cliente",
+    "DOC-CAD": "06 Documentos do Cliente",
+    "DOC-PRO": "06 Documentos do Cliente",
+    "DOC-CAR": "06 Documentos do Cliente",
+    "DOC-COM": "06 Documentos do Cliente",
+    "DOC-LIC": "06 Documentos do Cliente",
+    "CCEE": "04 CCEE - DRI"  # Será refinado depois baseado no subcódigo
 }
 
 # Subpastas específicas para CCEE (cada tipo tem sua pasta)
 CCEE_SUBPASTAS = [
     "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001", 
-    "LFRES001", "PEN001", "SUM001"
+    "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
 ]
 
 # CORS liberado para desenvolvimento
@@ -70,7 +81,7 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
     agora = datetime.now()
     
     # Para tipos que requerem data
-    if tipo in ["FAT", "NE-CP", "NE-LP", "REL", "EST", "CCEE"]:
+    if tipo in ["FAT", "NE-CP", "NE-LP", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
         if not ano_mes:
             # Se não fornecido, usa o mês atual
             ano_mes = agora.strftime("%Y-%m")
@@ -101,9 +112,13 @@ def obter_pasta_destino(tipo: str, empresa_nome: str, empresa_id: str, unidade_n
     unidade_folder = empresa_folder / f"{unidade_nome} - {unidade_id}"
     
     # Determina subpasta baseada no tipo
-    if tipo == "CCEE":
-        # Para CCEE, precisa determinar o subcódigo
-        # Por enquanto, coloca na pasta base do CCEE
+    if tipo.startswith("CCEE-"):
+        # Para CCEE com subtipo, ex: CCEE-CFZ003 -> pasta CFZ003
+        subtipo = tipo.replace("CCEE-", "")
+        return unidade_folder / "CCEE - DRI" / subtipo
+    
+    elif tipo == "CCEE":
+        # Para CCEE genérico (não deveria acontecer mais, mas mantém compatibilidade)
         return unidade_folder / "CCEE - DRI"
     
     elif tipo in TIPO_PARA_PASTA:
@@ -178,14 +193,21 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
             
             # Se for CCEE - DRI, cria subpastas dos tipos
             if "CCEE" in subpasta:
-                tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-                for tipo in tipos_ccee:
+                for tipo in CCEE_SUBPASTAS:
                     tipo_folder = subpasta_path / tipo
                     tipo_folder.mkdir(exist_ok=True)
     
     db.commit()
     db.refresh(emp)
     return emp
+
+@app.get("/config")
+def get_config():
+    """Retorna configurações do sistema"""
+    return {
+        "basePath": str(BASE_CLIENTES_PATH),
+        "version": "0.3.0"
+    }
 
 @app.get("/empresas", response_model=list[schemas.EmpresaOut])
 def listar_empresas(db: Session = Depends(get_db)):
@@ -263,8 +285,7 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
             subpasta_path.mkdir(exist_ok=True)
             
             if "CCEE" in subpasta:
-                tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-                for tipo in tipos_ccee:
+                for tipo in CCEE_SUBPASTAS:
                     (subpasta_path / tipo).mkdir(exist_ok=True)
     except Exception as e:
         print(f"Erro ao criar pastas da unidade: {e}")
@@ -379,6 +400,84 @@ def listar_itens(
 # UPLOAD DE ARQUIVOS
 # =====================
 
+@app.post("/upload/preview-auto")
+async def preview_upload_auto(
+    request: Request,
+    unidade_id: int = Form(...),
+    modo: str = Form(...),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Preview do upload automático: cada arquivo tem seu próprio tipo e data
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    preview_list = []
+    form_data = await request.form()
+    
+    for i, file in enumerate(files):
+        try:
+            # Pega tipo e data específicos para este arquivo
+            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
+            mes_ano = form_data.get(f'data_{i}')
+            
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo específico
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                "caminho_completo": str(caminho_completo.relative_to(BASE_CLIENTES_PATH)),
+                "tipo": tipo_arquivo,
+                "empresa": empresa.nome,
+                "unidade": unidade.nome,
+                "valido": True,
+                "erro": None
+            })
+            
+        except Exception as e:
+            preview_list.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "pasta_destino": None,
+                "caminho_completo": None,
+                "tipo": form_data.get(f'tipo_{i}', 'UNKNOWN'),
+                "empresa": empresa.nome,
+                "unidade": unidade.nome,
+                "valido": False,
+                "erro": str(e)
+            })
+    
+    return {
+        "preview": preview_list,
+        "total_arquivos": len(files),
+        "validos": sum(1 for p in preview_list if p["valido"]),
+        "empresa_info": f"{empresa.nome} ({empresa.id_empresa})",
+        "unidade_info": f"{unidade.nome} ({unidade.id_unidade})"
+    }
+
 @app.post("/upload/preview")
 async def preview_upload(
     unidade_id: int = Form(...),
@@ -450,6 +549,88 @@ async def preview_upload(
         "validos": len([p for p in preview_list if p["valido"]]),
         "empresa_info": f"{empresa.nome} - {empresa.id_empresa}",
         "unidade_info": f"{unidade.nome} - {unidade.id_unidade}"
+    }
+
+@app.post("/upload/executar-auto")
+async def executar_upload_auto(
+    request: Request,
+    unidade_id: int = Form(...),
+    modo: str = Form(...),
+    descricao: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Executa upload automático: cada arquivo com seu próprio tipo e data
+    """
+    # Busca dados da unidade e empresa
+    unidade = db.get(models.Unidade, unidade_id)
+    if not unidade:
+        raise HTTPException(404, "Unidade não encontrada")
+    
+    empresa = db.get(models.Empresa, unidade.empresa_id)
+    if not empresa:
+        raise HTTPException(404, "Empresa não encontrada")
+    
+    resultados = []
+    arquivos_salvos = 0
+    form_data = await request.form()
+    
+    for i, file in enumerate(files):
+        try:
+            # Pega tipo e data específicos para este arquivo
+            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
+            mes_ano = form_data.get(f'data_{i}')
+            
+            # Valida extensão
+            extensao = validar_extensao(file.filename)
+            
+            # Gera nome do arquivo baseado no tipo específico
+            novo_nome = gerar_nome_arquivo(tipo_arquivo, mes_ano, descricao, extensao)
+            
+            # Determina pasta de destino
+            pasta_destino = obter_pasta_destino(
+                tipo_arquivo, empresa.nome, empresa.id_empresa, 
+                unidade.nome, unidade.id_unidade
+            )
+            
+            # Garante que a pasta existe
+            pasta_destino.mkdir(parents=True, exist_ok=True)
+            
+            # Caminho completo do arquivo
+            caminho_completo = pasta_destino / novo_nome
+            
+            # Salva o arquivo
+            conteudo = await file.read()
+            with open(caminho_completo, "wb") as f:
+                f.write(conteudo)
+            
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": novo_nome,
+                "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                "sucesso": True,
+                "tipo": tipo_arquivo,
+                "erro": None
+            })
+            
+            arquivos_salvos += 1
+            
+        except Exception as e:
+            resultados.append({
+                "arquivo_original": file.filename,
+                "novo_nome": None,
+                "pasta_destino": None,
+                "sucesso": False,
+                "tipo": form_data.get(f'tipo_{i}', 'UNKNOWN'),
+                "erro": str(e)
+            })
+    
+    return {
+        "resultados": resultados,
+        "total_arquivos": len(files),
+        "arquivos_salvos": arquivos_salvos,
+        "message": f"Upload automático concluído: {arquivos_salvos}/{len(files)} arquivos salvos com sucesso"
     }
 
 @app.post("/upload/executar")
@@ -610,25 +791,27 @@ class SyncRequest(BaseModel):
 @app.post("/empresas/sync-bidirectional")
 async def sincronizar_empresas_bidirectional(request: SyncRequest, db: Session = Depends(get_db)):
     """
-    Sincronização bidirecional completa:
-    1. Remove do banco empresas/unidades que não existem mais no filesystem
-    2. Adiciona ao banco empresas/unidades que existem no filesystem mas não no banco
-    3. Cria pastas para empresas/unidades do banco que não existem no filesystem
+    Sincronização BANCO → PASTA (banco é a fonte da verdade):
+    1. Remove do filesystem pastas que não existem no banco
+    2. Cria pastas para empresas/unidades do banco que não existem no filesystem
     """
     base_path = BASE_CLIENTES_PATH
     base_path.mkdir(parents=True, exist_ok=True)
     
-    removed_empresas = 0
-    removed_unidades = 0
-    added_empresas = 0
-    added_unidades = 0
+    removed_folders = 0
     created_folders = 0
     
     try:
-        print(f"Sincronização bidirecional iniciada: {base_path}")
+        print(f"Sincronização BANCO → PASTA iniciada: {base_path}")
         
         # ========================================
-        # FASE 1: COLETA DADOS DO FILESYSTEM
+        # FASE 1: COLETA DADOS DO BANCO
+        # ========================================
+        db_empresas = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
+        db_empresas_dict = {emp.id_empresa: emp for emp in db_empresas}
+        
+        # ========================================
+        # FASE 2: COLETA DADOS DO FILESYSTEM
         # ========================================
         filesystem_empresas = {}  # {id_empresa: {nome, unidades: {id_unidade: nome}}}
         
@@ -661,89 +844,48 @@ async def sincronizar_empresas_bidirectional(request: SyncRequest, db: Session =
                             filesystem_empresas[id_empresa]['unidades'][id_unidade] = nome_unidade
         
         # ========================================
-        # FASE 2: COLETA DADOS DO BANCO
-        # ========================================
-        db_empresas = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
-        db_empresas_dict = {emp.id_empresa: emp for emp in db_empresas}
-        
-        # ========================================
-        # FASE 3: REMOVE DO BANCO O QUE NÃO EXISTE NO FILESYSTEM
-        # ========================================
-        for db_empresa in db_empresas:
-            if db_empresa.id_empresa not in filesystem_empresas:
-                print(f"Removendo empresa do banco (não existe no filesystem): {db_empresa.nome}")
-                
-                # Move pasta para backup se existir
-                empresa_folder = base_path / f"{db_empresa.nome} - {db_empresa.id_empresa}"
-                if empresa_folder.exists():
-                    backup_folder = base_path / "_BACKUP_SYNC"
-                    backup_folder.mkdir(exist_ok=True)
-                    from datetime import datetime
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    import shutil
-                    shutil.move(str(empresa_folder), str(backup_folder / f"{empresa_folder.name}_{timestamp}"))
-                
-                db.delete(db_empresa)
-                removed_empresas += 1
-            else:
-                # Empresa existe, verifica unidades
-                fs_unidades = filesystem_empresas[db_empresa.id_empresa]['unidades']
-                
-                for db_unidade in db_empresa.unidades:
-                    if db_unidade.id_unidade not in fs_unidades:
-                        print(f"  Removendo unidade do banco (não existe no filesystem): {db_unidade.nome}")
-                        
-                        # Move pasta para backup se existir
-                        empresa_folder = base_path / f"{db_empresa.nome} - {db_empresa.id_empresa}"
-                        unidade_folder = empresa_folder / f"{db_unidade.nome} - {db_unidade.id_unidade}"
-                        if unidade_folder.exists():
-                            backup_folder = base_path / "_BACKUP_SYNC"
-                            backup_folder.mkdir(exist_ok=True)
-                            from datetime import datetime
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            import shutil
-                            shutil.move(str(unidade_folder), str(backup_folder / f"{unidade_folder.name}_{timestamp}"))
-                        
-                        db.delete(db_unidade)
-                        removed_unidades += 1
-        
-        # ========================================
-        # FASE 4: ADICIONA AO BANCO O QUE EXISTE NO FILESYSTEM
+        # FASE 3: REMOVE DO FILESYSTEM O QUE NÃO EXISTE NO BANCO
         # ========================================
         for id_empresa, fs_empresa_data in filesystem_empresas.items():
             db_empresa = db_empresas_dict.get(id_empresa)
             
             if not db_empresa:
-                print(f"Adicionando empresa ao banco: {fs_empresa_data['nome']}")
-                db_empresa = models.Empresa(nome=fs_empresa_data['nome'], id_empresa=id_empresa)
-                db.add(db_empresa)
-                db.flush()
-                added_empresas += 1
-            
-            # Verifica unidades
-            for id_unidade, nome_unidade in fs_empresa_data['unidades'].items():
-                existing_unidade = db.query(models.Unidade).filter_by(
-                    id_unidade=id_unidade, 
-                    empresa_id=db_empresa.id
-                ).first()
+                # Empresa existe na pasta mas não no banco - REMOVER PASTA
+                empresa_folder = base_path / f"{fs_empresa_data['nome']} - {id_empresa}"
+                print(f"Removendo pasta da empresa (não existe no banco): {fs_empresa_data['nome']}")
                 
-                if not existing_unidade:
-                    print(f"  Adicionando unidade ao banco: {nome_unidade}")
-                    unidade = models.Unidade(
-                        nome=nome_unidade,
-                        id_unidade=id_unidade,
-                        empresa_id=db_empresa.id
-                    )
-                    db.add(unidade)
-                    added_unidades += 1
+                # Move pasta para backup
+                backup_folder = base_path / "_BACKUP_SYNC"
+                backup_folder.mkdir(exist_ok=True)
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                import shutil
+                shutil.move(str(empresa_folder), str(backup_folder / f"{empresa_folder.name}_{timestamp}"))
+                removed_folders += 1
+            else:
+                # Empresa existe no banco, verifica unidades
+                db_unidades_dict = {un.id_unidade: un for un in db_empresa.unidades}
+                
+                for id_unidade, nome_unidade in fs_empresa_data['unidades'].items():
+                    if id_unidade not in db_unidades_dict:
+                        # Unidade existe na pasta mas não no banco - REMOVER PASTA
+                        empresa_folder = base_path / f"{db_empresa.nome} - {db_empresa.id_empresa}"
+                        unidade_folder = empresa_folder / f"{nome_unidade} - {id_unidade}"
+                        print(f"  Removendo pasta da unidade (não existe no banco): {nome_unidade}")
+                        
+                        # Move pasta para backup
+                        backup_folder = base_path / "_BACKUP_SYNC"
+                        backup_folder.mkdir(exist_ok=True)
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        import shutil
+                        shutil.move(str(unidade_folder), str(backup_folder / f"{unidade_folder.name}_{timestamp}"))
+                        removed_folders += 1
         
         # ========================================
-        # FASE 5: CRIA PASTAS PARA DADOS DO BANCO QUE NÃO EXISTEM NO FILESYSTEM
+        # FASE 4: CRIA PASTAS PARA DADOS DO BANCO QUE NÃO EXISTEM NO FILESYSTEM
         # ========================================
-        db.flush()  # Garante que as mudanças anteriores estão aplicadas
-        db_empresas_updated = db.query(models.Empresa).options(joinedload(models.Empresa.unidades)).all()
-        
-        for empresa in db_empresas_updated:
+        for empresa in db_empresas:
             empresa_folder = base_path / f"{empresa.nome} - {empresa.id_empresa}"
             
             if not empresa_folder.exists():
@@ -767,38 +909,27 @@ async def sincronizar_empresas_bidirectional(request: SyncRequest, db: Session =
                         created_folders += 1
                         
                         if "CCEE" in subpasta:
-                            tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-                            for tipo in tipos_ccee:
+                            for tipo in CCEE_SUBPASTAS:
                                 tipo_folder = subpasta_path / tipo
                                 if not tipo_folder.exists():
                                     tipo_folder.mkdir(exist_ok=True)
                                     created_folders += 1
         
-        # Commit todas as mudanças
-        db.commit()
-        
-        print(f"Sincronização bidirecional concluída:")
-        print(f"  - Empresas removidas: {removed_empresas}")
-        print(f"  - Unidades removidas: {removed_unidades}")
-        print(f"  - Empresas adicionadas: {added_empresas}")
-        print(f"  - Unidades adicionadas: {added_unidades}")
+        print(f"Sincronização BANCO → PASTA concluída:")
+        print(f"  - Pastas removidas: {removed_folders}")
         print(f"  - Pastas criadas: {created_folders}")
     
     except Exception as e:
-        print(f"Erro na sincronização bidirecional: {str(e)}")
-        db.rollback()
+        print(f"Erro na sincronização: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Erro na sincronização bidirecional: {str(e)}"
+            detail=f"Erro na sincronização: {str(e)}"
         )
     
     return {
-        "removed_empresas": removed_empresas,
-        "removed_unidades": removed_unidades,
-        "added_empresas": added_empresas,
-        "added_unidades": added_unidades,
+        "removed_folders": removed_folders,
         "created_folders": created_folders,
-        "message": f"Sincronização completa: -{removed_empresas-removed_unidades} removidos, +{added_empresas+added_unidades} adicionados, {created_folders} pastas criadas",
+        "message": f"Sincronização completa: {removed_folders} pastas removidas, {created_folders} pastas criadas",
         "base_path": str(base_path)
     }
 
@@ -901,8 +1032,7 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                                 
                                 # Se for CCEE - DRI, cria subpastas dos tipos
                                 if "CCEE" in subpasta:
-                                    tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-                                    for tipo in tipos_ccee:
+                                    for tipo in CCEE_SUBPASTAS:
                                         (subpasta_path / tipo).mkdir(exist_ok=True)
             else:
                 print(f"  Pasta ignorada (formato inválido): {folder_name}")
@@ -967,8 +1097,7 @@ async def criar_pastas_do_banco(db: Session = Depends(get_db)):
                         
                         # Se for CCEE - DRI, cria subpastas dos tipos
                         if "CCEE" in subpasta:
-                            tipos_ccee = ["CFZ003", "GFN001", "LFN001", "LFRCA001", "LFRES001", "PEN001", "SUM001"]
-                            for tipo in tipos_ccee:
+                            for tipo in CCEE_SUBPASTAS:
                                 tipo_folder = subpasta_path / tipo
                                 if not tipo_folder.exists():
                                     tipo_folder.mkdir(exist_ok=True)

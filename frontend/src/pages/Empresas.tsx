@@ -6,10 +6,35 @@ import type { Empresa, Unidade } from '../lib/api';
 // Importar função de criar unidade
 const { criarUnidade } = api;
 
-// Caminho base temporário para sincronização de clientes (pastas locais)
-const CLIENTE_BASE_PATH = "C:\\Users\\User\\Documents\\PROJETOS\\id-management\\cliente"; // usar \\\\ se vier de .env
+// Hook para buscar configuração do sistema
+const useSystemConfig = () => {
+  const [basePath, setBasePath] = useState<string>("");
+  const [configLoading, setConfigLoading] = useState(true);
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await api.getConfig();
+        setBasePath(config.basePath);
+      } catch (error) {
+        console.error('Erro ao carregar configuração:', error);
+        // Fallback para valor padrão
+        setBasePath("C:/Users/User/Documents/PROJETOS/id-management/cliente");
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+
+    loadConfig();
+  }, []);
+
+  return { basePath, configLoading };
+};
 
 const EmpresasPage: React.FC = () => {
+  // Configuração do sistema
+  const { basePath, configLoading } = useSystemConfig();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [unidadesPorEmpresa, setUnidadesPorEmpresa] = useState<Record<number, Unidade[]>>({});
@@ -44,9 +69,18 @@ const EmpresasPage: React.FC = () => {
   const [selectedEmpresaNome, setSelectedEmpresaNome] = useState<string>('');
   const [selectedUnidadeNome, setSelectedUnidadeNome] = useState<string>('');
   const [tipoArquivo, setTipoArquivo] = useState<string>('');
+  const [cceeSubtipo, setCceeSubtipo] = useState<string>(''); // Novo estado para subtipo CCEE
   const [mesAno, setMesAno] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
   const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
+  const [autoDeteccao, setAutoDeteccao] = useState<boolean>(false);
+  const [arquivosAnalisados, setArquivosAnalisados] = useState<Array<{
+    file: File;
+    tipoDetectado: string;
+    dataDetectada: string;
+    confianca: number;
+    motivo: string;
+  }>>([]);
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<number>>(new Set());
@@ -63,17 +97,36 @@ const EmpresasPage: React.FC = () => {
     return `${year}-${month}`;
   };
 
-  // Tipos de arquivo disponíveis
+  // Tipos de arquivo disponíveis - data obrigatória exceto Estudo e todos os DOC-*
   const tiposArquivo = [
     { value: 'FAT', label: 'Fatura', requireDate: true },
     { value: 'NE-CP', label: 'Nota de Energia - CP', requireDate: true },
     { value: 'NE-LP', label: 'Nota de Energia - LP', requireDate: true },
     { value: 'REL', label: 'Relatório', requireDate: true },
-    { value: 'EST', label: 'Estudo', requireDate: true },
+    { value: 'RES', label: 'Resumo', requireDate: true },
+    { value: 'EST', label: 'Estudo', requireDate: false },
     { value: 'DOC-CTR', label: 'Documento - Contrato', requireDate: false },
     { value: 'DOC-ADT', label: 'Documento - Aditivo', requireDate: false },
     { value: 'DOC-CAD', label: 'Documento - Cadastro', requireDate: false },
+    { value: 'DOC-PRO', label: 'Documento - Procuração', requireDate: false },
+    { value: 'DOC-CAR', label: 'Documento - Carta Denúncia', requireDate: false },
+    { value: 'DOC-COM', label: 'Documento - Comunicado', requireDate: false },
+    { value: 'DOC-LIC', label: 'Documento - Licença', requireDate: false },
     { value: 'CCEE', label: 'CCEE - DRI', requireDate: true },
+  ];
+
+  // Subtipos CCEE disponíveis
+  const cceeSubtipos = [
+    { value: 'CFZ003', label: 'CFZ003' },
+    { value: 'CFZ004', label: 'CFZ004' },
+    { value: 'GFN001', label: 'GFN001' },
+    { value: 'LFN001', label: 'LFN001' },
+    { value: 'LFRCA001', label: 'LFRCA001' },
+    { value: 'LFRES001', label: 'LFRES001' },
+    { value: 'PEN001', label: 'PEN001' },
+    { value: 'SUM001', label: 'SUM001' },
+    { value: 'BOLETOCA', label: 'BOLETOCA' },
+    { value: 'ND', label: 'ND' },
   ];
 
   const fetchEmpresas = async () => {
@@ -93,7 +146,9 @@ const EmpresasPage: React.FC = () => {
   // Handler para mudança de tipo de arquivo
   const handleTipoArquivoChange = (valor: string) => {
     setTipoArquivo(valor);
+    setCceeSubtipo(''); // Limpa subtipo CCEE quando muda tipo
     setMostrarDataOpcional(false); // Reset do campo opcional
+    setArquivosAnalisados([]); // Reset da análise automática
     
     // Se o tipo requer data e não há data definida, define para o mês atual
     const tipoSelecionado = tiposArquivo.find(t => t.value === valor);
@@ -106,14 +161,131 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  // Função para lidar com mudança do checkbox de auto-detecção
+  const handleAutoDeteccaoChange = (ativado: boolean) => {
+    setAutoDeteccao(ativado);
+    
+    if (ativado) {
+      // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
+      setTipoArquivo('');
+      setCceeSubtipo('');
+      setMesAno('');
+      setMostrarDataOpcional(false);
+      
+      // Se há arquivos, analisa automaticamente
+      if (selectedFiles.length > 0) {
+        const analises = selectedFiles.map(analisarArquivoAutomaticamente);
+        setArquivosAnalisados(analises);
+      }
+    } else {
+      // Se desativou auto-detecção, limpa análises
+      setArquivosAnalisados([]);
+    }
+  };
+
+  // Função para detectar tipo e data automaticamente
+  const analisarArquivoAutomaticamente = (file: File) => {
+    const nome = file.name.toLowerCase();
+    let tipoDetectado = '';
+    let dataDetectada = '';
+    let confianca = 0;
+    let motivo = '';
+
+    // REGRA 1: Faturas - apenas data no nome (ex: "2025-08.pdf")
+    const regexDataFatura = /^(\d{4})-(\d{2})\.(pdf|xlsx?|docx?)$/i;
+    const matchFatura = nome.match(regexDataFatura);
+    if (matchFatura) {
+      tipoDetectado = 'FAT';
+      dataDetectada = `${matchFatura[1]}-${matchFatura[2]}`;
+      confianca = 95;
+      motivo = `Fatura detectada: nome contém apenas data (${dataDetectada})`;
+    }
+    
+    // REGRA 2: Notas de Energia - contém "nota", "cp" ou "lp"
+    else if (nome.includes('nota') || nome.includes('cp') || nome.includes('lp')) {
+      if (nome.includes('cp')) {
+        tipoDetectado = 'NE-CP';
+        motivo = 'Nota de Energia CP detectada: nome contém "CP"';
+      } else if (nome.includes('lp')) {
+        tipoDetectado = 'NE-LP';
+        motivo = 'Nota de Energia LP detectada: nome contém "LP"';
+      } else {
+        tipoDetectado = 'NE-CP'; // Padrão se só tem "nota"
+        motivo = 'Nota de Energia detectada: nome contém "nota"';
+      }
+      
+      // Data = data de modificação menos 1 mês
+      const dataModificacao = new Date(file.lastModified);
+      dataModificacao.setMonth(dataModificacao.getMonth() - 1);
+      const ano = dataModificacao.getFullYear();
+      const mes = String(dataModificacao.getMonth() + 1).padStart(2, '0');
+      dataDetectada = `${ano}-${mes}`;
+      confianca = 85;
+      motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
+    }
+    
+    // REGRA 3: Relatórios - contém "relatório" e data "JUL-25"
+    else if (nome.includes('relatorio') || nome.includes('relatório')) {
+      tipoDetectado = 'REL';
+      
+      // Buscar padrão de data no nome (ex: "JUL-25", "AGO-25")
+      const regexDataRelatorio = /(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-(\d{2})/i;
+      const matchRelatorio = nome.match(regexDataRelatorio);
+      
+      if (matchRelatorio) {
+        const mesNome = matchRelatorio[1].toLowerCase();
+        const ano20 = matchRelatorio[2];
+        
+        // Converter mês para número
+        const meses: { [key: string]: string } = {
+          'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04',
+          'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08',
+          'set': '09', 'out': '10', 'nov': '11', 'dez': '12'
+        };
+        
+        const mesNum = meses[mesNome];
+        const anoCompleto = `20${ano20}`;
+        dataDetectada = `${anoCompleto}-${mesNum}`;
+        confianca = 90;
+        motivo = `Relatório detectado: nome contém "relatório" e data ${matchRelatorio[0].toUpperCase()}`;
+      } else {
+        // Se não encontrou data no nome, usar data atual
+        dataDetectada = getCurrentMonth();
+        confianca = 70;
+        motivo = 'Relatório detectado: nome contém "relatório" - usando data atual';
+      }
+    }
+    
+    // Se não detectou nada, deixar vazio para seleção manual
+    else {
+      tipoDetectado = ''; // Vazio - usuário deve escolher manualmente
+      dataDetectada = '';
+      confianca = 0;
+      motivo = 'Tipo não identificado - seleção manual necessária';
+    }
+
+    return {
+      file,
+      tipoDetectado,
+      dataDetectada,
+      confianca,
+      motivo
+    };
+  };
+
   // Nova função: força sincronização bidirecional completa com o filesystem
   const handleSync = async () => {
+    if (!basePath) {
+      setError('Configuração do sistema não carregada');
+      return;
+    }
+    
     try {
       setLoading(true);
       setError(null);
       
       // Sincronização bidirecional: remove o que não existe + adiciona o que existe + cria pastas
-      const result = await api.sincronizarEmpresasBidirecional(CLIENTE_BASE_PATH);
+      const result = await api.sincronizarEmpresasBidirecional(basePath);
       
       // Recarrega a lista atualizada
       await fetchEmpresas();
@@ -363,31 +535,66 @@ const EmpresasPage: React.FC = () => {
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const files = Array.from(e.dataTransfer.files);
-      setSelectedFiles(prev => [...prev, ...files]);
+      adicionarArquivos(files);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      setSelectedFiles(prev => [...prev, ...files]);
+      adicionarArquivos(files);
+    }
+  };
+
+  // Função unificada para adicionar arquivos com análise automática
+  const adicionarArquivos = (files: File[]) => {
+    setSelectedFiles(prev => [...prev, ...files]);
+    
+    // Se auto-detecção estiver ativada, analisar arquivos
+    if (autoDeteccao) {
+      const analises = files.map(analisarArquivoAutomaticamente);
+      setArquivosAnalisados(prev => [...prev, ...analises]);
+      
+      // Log das detecções para debug
+      analises.forEach(analise => {
+        console.log(`🤖 ${analise.file.name}:`);
+        console.log(`   Tipo: ${analise.tipoDetectado} (${analise.confianca}%)`);
+        console.log(`   Data: ${analise.dataDetectada}`);
+        console.log(`   Motivo: ${analise.motivo}`);
+      });
     }
   };
 
   const removeFile = (index: number) => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    
+    // Se estiver no modo AUTO, remover também da análise
+    if (autoDeteccao) {
+      setArquivosAnalisados(prev => prev.filter((_, i) => i !== index));
+    }
   };
 
   const handleUpload = async () => {
-    if (!selectedUnidade || !tipoArquivo || selectedFiles.length === 0) {
-      setError('Selecione uma unidade, tipo de arquivo e adicione arquivos');
+    if (!selectedUnidade || selectedFiles.length === 0) {
+      setError('Selecione uma unidade e adicione arquivos');
       return;
     }
 
-    // Verifica se data é obrigatória para o tipo selecionado
-    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-    if (tipoSelecionado?.requireDate && !mesAno) {
-      setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+    // Verificar se precisa de tipo manual ou auto-detecção
+    if (!autoDeteccao && !tipoArquivo) {
+      setError('Selecione um tipo de arquivo ou ative a detecção automática');
+      return;
+    }
+
+    // Se auto-detecção ativa, verificar se há arquivos não identificados
+    if (autoDeteccao && arquivosAnalisados.some(analise => !analise.tipoDetectado)) {
+      setError('Alguns arquivos não foram identificados automaticamente. Desative a detecção automática e selecione os tipos manualmente.');
+      return;
+    }
+
+    // Verificar se CCEE precisa de subtipo
+    if (!autoDeteccao && tipoArquivo === 'CCEE' && !cceeSubtipo) {
+      setError('Selecione um subtipo CCEE');
       return;
     }
 
@@ -395,17 +602,45 @@ const EmpresasPage: React.FC = () => {
       setUploading(true);
       setError(null);
       
-      // Primeiro, faz preview do upload
       const fileList = new DataTransfer();
       selectedFiles.forEach(file => fileList.items.add(file));
       
-      const preview = await api.previewUpload(
-        parseInt(selectedUnidade), 
-        tipoArquivo, 
-        mesAno || null, 
-        descricao || null, 
-        fileList.files
-      );
+      let preview;
+      
+      // Se estiver com auto-detecção ativada, usar endpoint específico
+      if (autoDeteccao) {
+        // Converte arquivosAnalisados para o formato esperado pela API
+        const filesWithAnalysis = arquivosAnalisados.map(analise => ({
+          file: analise.file,
+          tipoDetectado: analise.tipoDetectado,
+          dataDetectada: analise.dataDetectada
+        }));
+        
+        preview = await api.previewUploadAuto(
+          parseInt(selectedUnidade),
+          filesWithAnalysis,
+          descricao || null
+        );
+      } else {
+        // Verifica se data é obrigatória para o tipo selecionado
+        const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+        if (tipoSelecionado?.requireDate && !mesAno) {
+          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+          return;
+        }
+        
+        // Para CCEE, combina tipo e subtipo
+        const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
+        
+        // Modo manual normal
+        preview = await api.previewUpload(
+          parseInt(selectedUnidade), 
+          tipoFinal, 
+          mesAno || null, 
+          descricao || null, 
+          fileList.files
+        );
+      }
       
       setUploadPreview(preview);
       setShowUploadPreview(true);
@@ -419,14 +654,25 @@ const EmpresasPage: React.FC = () => {
   };
 
   const executarUpload = async () => {
-    if (!selectedUnidade || !tipoArquivo || selectedFiles.length === 0) {
+    if (!selectedUnidade || selectedFiles.length === 0) {
       return;
     }
 
-    // Verifica se data é obrigatória para o tipo selecionado
-    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-    if (tipoSelecionado?.requireDate && !mesAno) {
-      setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+    // Verificar se precisa de tipo manual ou auto-detecção
+    if (!autoDeteccao && !tipoArquivo) {
+      setError('Selecione um tipo de arquivo ou ative a detecção automática');
+      return;
+    }
+
+    // Se auto-detecção ativa, verificar se há arquivos não identificados
+    if (autoDeteccao && arquivosAnalisados.some(analise => !analise.tipoDetectado)) {
+      setError('Alguns arquivos não foram identificados automaticamente. Desative a detecção automática e selecione os tipos manualmente.');
+      return;
+    }
+
+    // Verificar se CCEE precisa de subtipo
+    if (!autoDeteccao && tipoArquivo === 'CCEE' && !cceeSubtipo) {
+      setError('Selecione um subtipo CCEE');
       return;
     }
 
@@ -434,21 +680,51 @@ const EmpresasPage: React.FC = () => {
       setUploading(true);
       setError(null);
       
-      // Executa o upload
-      const fileList = new DataTransfer();
-      selectedFiles.forEach(file => fileList.items.add(file));
+      let result;
       
-      const result = await api.executarUpload(
-        parseInt(selectedUnidade), 
-        tipoArquivo, 
-        mesAno || null, 
-        descricao || null, 
-        fileList.files
-      );
+      // Se estiver com auto-detecção ativada, usar endpoint específico
+      if (autoDeteccao) {
+        // Converte arquivosAnalisados para o formato esperado pela API
+        const filesWithAnalysis = arquivosAnalisados.map(analise => ({
+          file: analise.file,
+          tipoDetectado: analise.tipoDetectado,
+          dataDetectada: analise.dataDetectada
+        }));
+        
+        result = await api.executarUploadAuto(
+          parseInt(selectedUnidade),
+          filesWithAnalysis,
+          descricao || null
+        );
+      } else {
+        // Verifica se data é obrigatória para o tipo selecionado
+        const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+        if (tipoSelecionado?.requireDate && !mesAno) {
+          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+          return;
+        }
+        
+        // Para CCEE, combina tipo e subtipo
+        const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
+        
+        // Executa o upload manual normal
+        const fileList = new DataTransfer();
+        selectedFiles.forEach(file => fileList.items.add(file));
+        
+        result = await api.executarUpload(
+          parseInt(selectedUnidade), 
+          tipoFinal, 
+          mesAno || null, 
+          descricao || null, 
+          fileList.files
+        );
+      }
       
       // Limpa formulário
       setSelectedFiles([]);
+      setArquivosAnalisados([]);
       setTipoArquivo('');
+      setCceeSubtipo('');
       setMesAno('');
       setDescricao('');
       setMostrarDataOpcional(false);
@@ -598,13 +874,46 @@ const EmpresasPage: React.FC = () => {
             </div>
           )}
 
-          {/* Tipo de Arquivo */}
+          {/* Checkbox de Auto-Detecção */}
+          <div className="mb-3">
+            <label className="flex items-center gap-2 cursor-pointer text-xs">
+              <input 
+                type="checkbox" 
+                checked={autoDeteccao}
+                onChange={(e) => handleAutoDeteccaoChange(e.target.checked)}
+                className="w-3 h-3 text-blue-500 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-1"
+              />
+              <span className="text-slate-400 hover:text-slate-300 transition-colors">
+                Detecção automática
+              </span>
+            </label>
+            
+            {/* Regras de detecção automática (aparece quando ativada) */}
+            {autoDeteccao && (
+              <div className="mt-2 ml-5 text-xs text-slate-500 leading-relaxed">
+                <div className="opacity-75">
+                  <strong className="text-slate-400">Regras de detecção:</strong><br/>
+                  • <span className="text-blue-400">Faturas:</span> apenas data YYYY-MM no nome<br/>
+                  • <span className="text-green-400">Notas:</span> "nota", "CP" ou "LP" no nome<br/>
+                  • <span className="text-yellow-400">Relatórios:</span> "relatório" + data "JUL-25"<br/>
+                  • <span className="text-slate-400">Não identificado:</span> seleção manual necessária
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tipo de Arquivo - desabilitado quando auto-detecção ativa */}
           <div>
-            <label className="block text-xs text-blue-300 mb-2 font-medium">Tipo de Arquivo</label>
+            <label className="block text-xs text-blue-300 mb-2 font-medium">
+              Tipo de Arquivo {autoDeteccao && <span className="text-slate-500 font-normal">(automático)</span>}
+            </label>
             <select 
               value={tipoArquivo}
               onChange={(e) => handleTipoArquivoChange(e.target.value)}
-              className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 cursor-pointer appearance-none bg-right bg-no-repeat backdrop-blur-sm"
+              disabled={autoDeteccao}
+              className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 cursor-pointer appearance-none bg-right bg-no-repeat backdrop-blur-sm ${
+                autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
                 backgroundPosition: 'right 0.5rem center',
@@ -621,6 +930,39 @@ const EmpresasPage: React.FC = () => {
             </select>
           </div>
 
+          {/* Subtipo CCEE - aparece apenas quando CCEE é selecionado */}
+          {tipoArquivo === 'CCEE' && (
+            <div className="animate-fade-in-down">
+              <label className="block text-xs text-blue-300 mb-2 font-medium">
+                Subtipo CCEE {autoDeteccao && <span className="text-slate-500 font-normal">(automático)</span>}
+              </label>
+              <select 
+                value={cceeSubtipo}
+                onChange={(e) => setCceeSubtipo(e.target.value)}
+                disabled={autoDeteccao}
+                className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 cursor-pointer appearance-none bg-right bg-no-repeat backdrop-blur-sm ${
+                  autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                  backgroundPosition: 'right 0.5rem center',
+                  backgroundSize: '1.5em 1.5em',
+                  paddingRight: '2.5rem'
+                }}
+              >
+                <option value="">Selecione o subtipo...</option>
+                {cceeSubtipos.map(subtipo => (
+                  <option key={subtipo.value} value={subtipo.value} className="py-2">
+                    {subtipo.label}
+                  </option>
+                ))}
+              </select>
+              {!cceeSubtipo && (
+                <p className="text-xs text-amber-400 mt-1">* Subtipo obrigatório para CCEE</p>
+              )}
+            </div>
+          )}
+
           {/* Campo de Mês/Ano condicional */}
           {tipoArquivo && (
             <div className="animate-fade-in-down">
@@ -633,13 +975,16 @@ const EmpresasPage: React.FC = () => {
                   return (
                     <>
                       <label className="block text-xs text-blue-300 mb-2 font-medium">
-                        Mês/Ano
+                        Mês/Ano {autoDeteccao && <span className="text-slate-500 font-normal">(automático)</span>}
                       </label>
                       <input
                         type="month"
                         value={mesAno}
                         onChange={(e) => setMesAno(e.target.value)}
-                        className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+                        disabled={autoDeteccao}
+                        className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm ${
+                          autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
                       />
                       {!mesAno && (
                         <p className="text-xs text-amber-400 mt-1">* Campo obrigatório</p>
@@ -762,9 +1107,44 @@ const EmpresasPage: React.FC = () => {
               ))}
             </div>
             
+            {/* Análise Automática */}
+            {tipoArquivo === 'AUTO' && arquivosAnalisados.length > 0 && (
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/40 rounded animate-fade-in-down">
+                <h4 className="text-xs font-medium text-blue-300 mb-2 flex items-center gap-1">
+                  <span>🤖</span> Análise Automática
+                </h4>
+                <div className="space-y-2 text-xs">
+                  {arquivosAnalisados.map((analise, index) => (
+                    <div key={index} className="bg-slate-800/30 p-2 rounded border border-blue-800/20">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-blue-200 truncate flex-1">
+                          {analise.file.name}
+                        </span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          analise.confianca >= 90 ? 'bg-green-900/50 text-green-300' :
+                          analise.confianca >= 70 ? 'bg-yellow-900/50 text-yellow-300' :
+                          'bg-red-900/50 text-red-300'
+                        }`}>
+                          {analise.confianca}%
+                        </span>
+                      </div>
+                      <div className="text-blue-300">
+                        <span className="font-medium">
+                          {analise.tipoDetectado || 'Não identificado'}
+                        </span> - {analise.dataDetectada || 'Data não detectada'}
+                      </div>
+                      <div className="text-slate-400 text-xs mt-1">
+                        {analise.motivo}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <button
               onClick={handleUpload}
-              disabled={!selectedUnidade || !tipoArquivo || selectedFiles.length === 0 || uploading}
+              disabled={!selectedUnidade || (!autoDeteccao && !tipoArquivo) || selectedFiles.length === 0 || uploading}
               className="w-full mt-2 bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 rounded text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-700/30 border border-blue-600/30"
             >
               {uploading ? 'Processando...' : `Visualizar Upload (${selectedFiles.length} arquivo${selectedFiles.length !== 1 ? 's' : ''})`}

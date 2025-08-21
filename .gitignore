@@ -53,3 +53,8 @@ reports/*.csv
 # Arquivos de configuração sensíveis
 .env
 !.env.example
+
+# Pasta de clientes (dados sensíveis)
+cliente/
+
+cliente/EMPRESA DEMO - 0011/Filial RJ - 002/Faturas/FAT-2023-04.pdf
