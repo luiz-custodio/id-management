@@ -46,10 +46,22 @@ const EmpresasPage: React.FC = () => {
   const [tipoArquivo, setTipoArquivo] = useState<string>('');
   const [mesAno, setMesAno] = useState<string>('');
   const [descricao, setDescricao] = useState<string>('');
+  const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<number>>(new Set());
+  const [uploadPreview, setUploadPreview] = useState<any>(null);
+  const [showUploadPreview, setShowUploadPreview] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Função para obter mês/ano atual no formato YYYY-MM
+  const getCurrentMonth = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  };
 
   // Tipos de arquivo disponíveis
   const tiposArquivo = [
@@ -75,6 +87,22 @@ const EmpresasPage: React.FC = () => {
       setError(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handler para mudança de tipo de arquivo
+  const handleTipoArquivoChange = (valor: string) => {
+    setTipoArquivo(valor);
+    setMostrarDataOpcional(false); // Reset do campo opcional
+    
+    // Se o tipo requer data e não há data definida, define para o mês atual
+    const tipoSelecionado = tiposArquivo.find(t => t.value === valor);
+    if (tipoSelecionado?.requireDate && !mesAno) {
+      setMesAno(getCurrentMonth());
+    }
+    // Se o tipo não requer data, limpa o campo
+    else if (tipoSelecionado && !tipoSelecionado.requireDate) {
+      setMesAno('');
     }
   };
 
@@ -351,15 +379,92 @@ const EmpresasPage: React.FC = () => {
   };
 
   const handleUpload = async () => {
-    // TODO: Implementar upload
-    console.log({
-      empresa: selectedEmpresa,
-      unidade: selectedUnidade,
-      tipo: tipoArquivo,
-      mesAno,
-      descricao,
-      arquivos: selectedFiles
-    });
+    if (!selectedUnidade || !tipoArquivo || selectedFiles.length === 0) {
+      setError('Selecione uma unidade, tipo de arquivo e adicione arquivos');
+      return;
+    }
+
+    // Verifica se data é obrigatória para o tipo selecionado
+    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+    if (tipoSelecionado?.requireDate && !mesAno) {
+      setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setError(null);
+      
+      // Primeiro, faz preview do upload
+      const fileList = new DataTransfer();
+      selectedFiles.forEach(file => fileList.items.add(file));
+      
+      const preview = await api.previewUpload(
+        parseInt(selectedUnidade), 
+        tipoArquivo, 
+        mesAno || null, 
+        descricao || null, 
+        fileList.files
+      );
+      
+      setUploadPreview(preview);
+      setShowUploadPreview(true);
+      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao fazer preview do upload';
+      setError(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const executarUpload = async () => {
+    if (!selectedUnidade || !tipoArquivo || selectedFiles.length === 0) {
+      return;
+    }
+
+    // Verifica se data é obrigatória para o tipo selecionado
+    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+    if (tipoSelecionado?.requireDate && !mesAno) {
+      setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setError(null);
+      
+      // Executa o upload
+      const fileList = new DataTransfer();
+      selectedFiles.forEach(file => fileList.items.add(file));
+      
+      const result = await api.executarUpload(
+        parseInt(selectedUnidade), 
+        tipoArquivo, 
+        mesAno || null, 
+        descricao || null, 
+        fileList.files
+      );
+      
+      // Limpa formulário
+      setSelectedFiles([]);
+      setTipoArquivo('');
+      setMesAno('');
+      setDescricao('');
+      setMostrarDataOpcional(false);
+      setShowUploadPreview(false);
+      setUploadPreview(null);
+      
+      // Mostra resultado
+      setError(`✅ ${result.message}`);
+      setTimeout(() => setError(null), 5000);
+      
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao fazer upload';
+      setError(msg);
+    } finally {
+      setUploading(false);
+    }
   };
 
   // Toggle expansão de empresa - permite apenas uma por vez
@@ -415,9 +520,9 @@ const EmpresasPage: React.FC = () => {
   };
 
   // Seleciona unidade ao dar duplo clique
-  const handleUnidadeDoubleClick = (empresaId: number, unidadeId: string, empresaNome: string, unidadeNome: string) => {
+  const handleUnidadeDoubleClick = (empresaId: number, unidadeDbId: number, empresaNome: string, unidadeNome: string) => {
     // Se já está selecionada, desseleciona
-    if (selectedEmpresa === String(empresaId) && selectedUnidade === unidadeId) {
+    if (selectedEmpresa === String(empresaId) && selectedUnidade === String(unidadeDbId)) {
       setSelectedEmpresa('');
       setSelectedUnidade('');
       setSelectedEmpresaNome('');
@@ -425,7 +530,7 @@ const EmpresasPage: React.FC = () => {
     } else {
       // Senão, seleciona
       setSelectedEmpresa(String(empresaId));
-      setSelectedUnidade(unidadeId);
+      setSelectedUnidade(String(unidadeDbId));
       setSelectedEmpresaNome(empresaNome);
       setSelectedUnidadeNome(unidadeNome);
     }
@@ -498,7 +603,7 @@ const EmpresasPage: React.FC = () => {
             <label className="block text-xs text-blue-300 mb-2 font-medium">Tipo de Arquivo</label>
             <select 
               value={tipoArquivo}
-              onChange={(e) => setTipoArquivo(e.target.value)}
+              onChange={(e) => handleTipoArquivoChange(e.target.value)}
               className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 cursor-pointer appearance-none bg-right bg-no-repeat backdrop-blur-sm"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2360a5fa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
@@ -517,15 +622,75 @@ const EmpresasPage: React.FC = () => {
           </div>
 
           {/* Campo de Mês/Ano condicional */}
-          {tipoArquivo && tiposArquivo.find(t => t.value === tipoArquivo)?.requireDate && (
+          {tipoArquivo && (
             <div className="animate-fade-in-down">
-              <label className="block text-xs text-blue-300 mb-2 font-medium">Mês/Ano</label>
-              <input
-                type="month"
-                value={mesAno}
-                onChange={(e) => setMesAno(e.target.value)}
-                className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
-              />
+              {(() => {
+                const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+                const isRequired = tipoSelecionado?.requireDate || false;
+                
+                // Para tipos obrigatórios, sempre mostra o campo
+                if (isRequired) {
+                  return (
+                    <>
+                      <label className="block text-xs text-blue-300 mb-2 font-medium">
+                        Mês/Ano
+                      </label>
+                      <input
+                        type="month"
+                        value={mesAno}
+                        onChange={(e) => setMesAno(e.target.value)}
+                        className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+                      />
+                      {!mesAno && (
+                        <p className="text-xs text-amber-400 mt-1">* Campo obrigatório</p>
+                      )}
+                    </>
+                  );
+                }
+                
+                // Para tipos opcionais, mostra botão ou campo conforme estado
+                return (
+                  <>
+                    {!mostrarDataOpcional ? (
+                      <button
+                        type="button"
+                        onClick={() => setMostrarDataOpcional(true)}
+                        className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors duration-200 border border-blue-800/40 rounded px-3 py-2 hover:border-blue-600/60 hover:bg-blue-900/20"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Adicionar Data
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs text-blue-300 font-medium">
+                            Mês/Ano (Opcional)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMostrarDataOpcional(false);
+                              setMesAno('');
+                            }}
+                            className="text-xs text-red-400 hover:text-red-300 transition-colors duration-200"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                        <input
+                          type="month"
+                          value={mesAno}
+                          onChange={(e) => setMesAno(e.target.value)}
+                          className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -599,10 +764,10 @@ const EmpresasPage: React.FC = () => {
             
             <button
               onClick={handleUpload}
-              disabled={!selectedUnidade || !tipoArquivo || selectedFiles.length === 0}
+              disabled={!selectedUnidade || !tipoArquivo || selectedFiles.length === 0 || uploading}
               className="w-full mt-2 bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 rounded text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-700/30 border border-blue-600/30"
             >
-              Fazer Upload ({selectedFiles.length} arquivo{selectedFiles.length !== 1 ? 's' : ''})
+              {uploading ? 'Processando...' : `Visualizar Upload (${selectedFiles.length} arquivo${selectedFiles.length !== 1 ? 's' : ''})`}
             </button>
           </div>
         )}
@@ -807,12 +972,12 @@ const EmpresasPage: React.FC = () => {
                               <div 
                                 key={unidade.id}
                                 className={`px-6 py-3 hover:bg-blue-800/15 transition-colors cursor-pointer border-b border-blue-800/30 ${
-                                  selectedUnidade === unidade.id_unidade && selectedEmpresa === String(empresa.id)
+                                  selectedUnidade === String(unidade.id) && selectedEmpresa === String(empresa.id)
                                     ? 'bg-blue-700/10 border-blue-600/40' 
                                     : ''
                                 }`}
                                 onClick={(e) => e.stopPropagation()}
-                                onDoubleClick={() => handleUnidadeDoubleClick(empresa.id, unidade.id_unidade, empresa.nome, unidade.nome)}
+                                onDoubleClick={() => handleUnidadeDoubleClick(empresa.id, unidade.id, empresa.nome, unidade.nome)}
                                 title="Duplo clique para selecionar"
                               >
                                 <div className="flex items-center justify-between">
@@ -1096,6 +1261,91 @@ const EmpresasPage: React.FC = () => {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Preview do Upload */}
+      {showUploadPreview && uploadPreview && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-slate-900/95 border border-blue-800/40 rounded-lg p-6 max-w-4xl w-full mx-4 animate-slide-up shadow-2xl max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-blue-400 mb-4 flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Preview do Upload
+            </h2>
+            
+            <div className="space-y-4">
+              <div className="bg-blue-900/20 rounded p-3 border border-blue-700/30">
+                <p className="text-blue-200"><strong>Destino:</strong> {uploadPreview.empresa_info} → {uploadPreview.unidade_info}</p>
+                <p className="text-blue-200"><strong>Arquivos:</strong> {uploadPreview.total_arquivos} total, {uploadPreview.validos} válidos</p>
+              </div>
+              
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {uploadPreview.preview.map((item: any, index: number) => (
+                  <div 
+                    key={index} 
+                    className={`p-3 rounded border ${
+                      item.valido 
+                        ? 'bg-green-900/20 border-green-700/30' 
+                        : 'bg-red-900/20 border-red-700/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-mono text-sm text-blue-200">
+                          <span className="text-gray-400">Arquivo:</span> {item.arquivo_original}
+                        </p>
+                        {item.valido ? (
+                          <>
+                            <p className="font-mono text-sm text-green-400">
+                              <span className="text-gray-400">Novo nome:</span> {item.novo_nome}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              <span>Pasta:</span> {item.pasta_destino}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-red-400">
+                            <span className="text-gray-400">Erro:</span> {item.erro}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`w-4 h-4 rounded-full ${item.valido ? 'bg-green-500' : 'bg-red-500'}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowUploadPreview(false);
+                  setUploadPreview(null);
+                }}
+                className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-white transition-all duration-200"
+              >
+                Cancelar
+              </button>
+              
+              <button
+                onClick={executarUpload}
+                disabled={uploadPreview.validos === 0 || uploading}
+                className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
