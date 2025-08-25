@@ -44,120 +44,51 @@ jobs:
         cd frontend
         npm run electron:pack
     
-    - name: 📋 Criar arquivo de informações
+    - name:  Criar ZIP do cliente
       run: |
         cd frontend/dist-electron
-        $info = @"
-        # ID Management System - v${{ github.ref_name }}
-        
-        ## 📁 Instruções de Instalação
-        
-        ### 1. Extrair
-        - Extraia todos os arquivos em: C:\ID-Management\
-        
-        ### 2. Executar
-        - Execute: ID Management System.exe
-        - O app conecta automaticamente em: 192.168.1.52:8000
-        
-        ### 3. Servidor (Administrador)
-        - Execute start-server.bat no PC servidor
-        - Mantenha a janela aberta durante o uso
-        
-        ## 🎮 Controles
-        - 🖥️ Trocar tamanho da janela
-        - 📌 PIN para manter na frente
-        - Drag & Drop para upload de arquivos
-        
-        ## 📞 Suporte
-        Contato: BM Energia
-        Data: $(Get-Date -Format "dd/MM/yyyy")
-        "@
-        $info | Out-File -FilePath "LEIA-ME.txt" -Encoding UTF8
-    
-    - name: 📦 Criar ZIP do cliente
-      run: |
-        cd frontend/dist-electron
-        Compress-Archive -Path "ID Management System-win32-x64\*" -DestinationPath "ID-Management-Cliente-Windows.zip" -Force
-    
-    - name: 📦 Criar ZIP do servidor
-      run: |
-        $serverFiles = @(
-          "start-server.bat",
-          "stop-server.bat", 
-          "status-server.bat",
-          "backend\",
-          "docker-compose.yml",
-          "README.md"
-        )
-        
-        Compress-Archive -Path $serverFiles -DestinationPath "ID-Management-Servidor.zip" -Force
-    
-    - name: 📋 Gerar Release Notes
-      id: release_notes
-      run: |
-        $notes = @"
-        ## 🎉 ID Management System ${{ github.ref_name }}
-        
-        ### 📥 Downloads
-        - **Cliente Windows**: ID-Management-Cliente-Windows.zip
-        - **Servidor Completo**: ID-Management-Servidor.zip
-        
-        ### 🚀 Novidades desta versão
-        - ✅ Interface desktop nativa com Electron
-        - ✅ 3 tamanhos de janela predefinidos
-        - ✅ Controles personalizados (PIN, minimizar, fechar)
-        - ✅ Sistema de upload drag & drop
-        - ✅ Detecção automática de tipos de arquivo
-        - ✅ Estrutura de pastas espelho no servidor
-        - ✅ Banco PostgreSQL centralizado
-        
-        ### 💻 Requisitos
-        - **Cliente**: Windows 10/11, Rede local
-        - **Servidor**: Docker Desktop, Python 3.8+
-        
-        ### 🛠️ Instalação Rápida
-        
-        #### Para Clientes:
-        1. Baixar: ID-Management-Cliente-Windows.zip  
-        2. Extrair em: C:\ID-Management\
-        3. Executar: ID Management System.exe
-        
-        #### Para Servidor:
-        1. Baixar: ID-Management-Servidor.zip
-        2. Extrair no PC servidor
-        3. Executar: start-server.bat
-        4. Manter janela aberta
-        
-        ### 🌐 Configuração de Rede
-        - **IP Servidor**: 192.168.1.52
-        - **Porta API**: 8000
-        - **Porta PostgreSQL**: 5432
-        
-        ---
-        
-        **📞 Suporte**: BM Energia  
-        **📅 Data**: $(Get-Date -Format "dd/MM/yyyy HH:mm")
-        "@
-        
-        $notes | Out-File -FilePath "release-notes.md" -Encoding UTF8
-        echo "RELEASE_NOTES_PATH=release-notes.md" >> $env:GITHUB_OUTPUT
+        Compress-Archive -Path "ID Management System-win32-x64" -DestinationPath "ID-Management-Cliente-Windows.zip" -Force
     
     - name: 🏷️ Criar Release no GitHub
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ github.ref_name }}
         name: "ID Management System ${{ github.ref_name }}"
-        body_path: release-notes.md
+        body: |
+          ## 🎉 ID Management System ${{ github.ref_name }}
+          
+          ### 📥 Downloads
+          - **Cliente Windows**: ID-Management-Cliente-Windows.zip
+          
+          ### 🚀 Novidades desta versão
+          - ✅ Interface desktop nativa com Electron
+          - ✅ 3 tamanhos de janela predefinidos
+          - ✅ Controles personalizados (PIN, minimizar, fechar)
+          - ✅ Sistema de upload drag & drop
+          - ✅ Detecção automática de tipos de arquivo
+          - ✅ Estrutura de pastas espelho no servidor
+          - ✅ Banco PostgreSQL centralizado
+          
+          ### 💻 Requisitos
+          - **Cliente**: Windows 10/11, Rede local
+          - **Servidor**: Docker Desktop, Python 3.8+
+          
+          ### 🛠️ Instalação Rápida
+          
+          #### Para Clientes:
+          1. Baixar: ID-Management-Cliente-Windows.zip  
+          2. Extrair em: C:\ID-Management\
+          3. Executar: ID Management System.exe
+          4. App conecta automaticamente em: 192.168.1.52:8000
+          
+          ### 🌐 Configuração de Rede
+          - **IP Servidor**: 192.168.1.52
+          - **Porta API**: 8000
+          - **Porta PostgreSQL**: 5432
         files: |
           frontend/dist-electron/ID-Management-Cliente-Windows.zip
-          ID-Management-Servidor.zip
         draft: false
         prerelease: false
         make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: ✅ Build Concluído
-      run: |
-        Write-Host "🎉 Build concluído com sucesso!" -ForegroundColor Green
-        Write-Host "📦 Arquivos disponíveis em: https://github.com/${{ github.repository }}/releases" -ForegroundColor Cyan
