@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, Body, UploadFile, Fi
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func
-from .database import Base, engine, SessionLocal
+from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
 from .fs_utils import montar_estrutura_unidade
@@ -15,11 +15,65 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+import logging
+
+# Configuração de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Carrega variáveis de ambiente
 load_dotenv()
 
-app = FastAPI(title="IDS Manager API", version="0.3.0")
+# Import condicional do docker_manager (evita erro se deps não instaladas)
+try:
+    from .docker_manager import postgres_manager
+    DOCKER_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Docker manager não disponível: {e}")
+    DOCKER_AVAILABLE = False
+    postgres_manager = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Gerencia ciclo de vida da aplicação
+    Inicia PostgreSQL via Docker automaticamente se disponível
+    """
+    # Startup: Inicia PostgreSQL se configurado e Docker disponível
+    db_info = get_database_info()
+    
+    if db_info["type"] == "postgresql" and DOCKER_AVAILABLE and postgres_manager:
+        logger.info("🐳 Iniciando PostgreSQL via Docker...")
+        result = postgres_manager.start_postgres()
+        
+        if result["success"]:
+            logger.info(f"✅ {result['message']}")
+            if result.get("details"):
+                logger.info(f"📋 Detalhes: {result['details']}")
+        else:
+            logger.error(f"❌ Falha ao iniciar PostgreSQL: {result['message']}")
+            logger.info("🔄 Continuando com SQLite como fallback...")
+    
+    # Cria tabelas no banco (PostgreSQL ou SQLite)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info(f"✅ Tabelas criadas/verificadas no {db_info['type'].upper()}")
+    except Exception as e:
+        logger.error(f"❌ Erro ao criar tabelas: {e}")
+    
+    yield
+    
+    # Shutdown: Para PostgreSQL se necessário (opcional)
+    # if DOCKER_AVAILABLE and postgres_manager:
+    #     postgres_manager.stop_postgres()
+
+app = FastAPI(
+    title="IDS Manager API", 
+    version="0.4.0",
+    description="Sistema de Gerenciamento de IDs com PostgreSQL via Docker",
+    lifespan=lifespan
+)
 
 # Caminho base para todas as operações de pastas de clientes (configurável via .env)
 BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", "C:/Users/User/Documents/PROJETOS/id-management/cliente"))
@@ -73,6 +127,76 @@ app.add_middleware(
 
 # cria tabelas se não existirem
 Base.metadata.create_all(bind=engine)
+
+# ==========================================
+# ENDPOINTS DE GERENCIAMENTO DOCKER/POSTGRES
+# ==========================================
+
+@app.get("/database/info")
+async def get_database_info_endpoint():
+    """Retorna informações sobre o banco em uso"""
+    db_info = get_database_info()
+    
+    if DOCKER_AVAILABLE and postgres_manager:
+        postgres_status = postgres_manager.get_status()
+    else:
+        postgres_status = {"error": "Docker manager não disponível"}
+    
+    return {
+        "database": db_info,
+        "postgres_status": postgres_status,
+        "docker_available": DOCKER_AVAILABLE
+    }
+
+@app.post("/database/postgres/start")
+async def start_postgres():
+    """Inicia PostgreSQL via Docker"""
+    if not DOCKER_AVAILABLE or not postgres_manager:
+        return {"success": False, "message": "Docker manager não disponível"}
+    
+    result = postgres_manager.start_postgres()
+    
+    if result["success"]:
+        # Recria tabelas no PostgreSQL se necessário
+        try:
+            Base.metadata.create_all(bind=engine)
+            result["tables_created"] = True
+        except Exception as e:
+            result["tables_created"] = False
+            result["table_error"] = str(e)
+    
+    return result
+
+@app.post("/database/postgres/stop")
+async def stop_postgres():
+    """Para PostgreSQL via Docker (preserva dados)"""
+    if not DOCKER_AVAILABLE or not postgres_manager:
+        return {"success": False, "message": "Docker manager não disponível"}
+    
+    return postgres_manager.stop_postgres()
+
+@app.get("/database/postgres/status")
+async def postgres_status():
+    """Status detalhado do PostgreSQL"""
+    if not DOCKER_AVAILABLE or not postgres_manager:
+        return {"error": "Docker manager não disponível"}
+    
+    return postgres_manager.get_status()
+
+@app.get("/database/postgres/logs")
+async def postgres_logs(lines: int = 50):
+    """Logs do container PostgreSQL"""
+    if not DOCKER_AVAILABLE or not postgres_manager:
+        return {"error": "Docker manager não disponível"}
+    
+    return {
+        "logs": postgres_manager.get_logs(lines),
+        "container": postgres_manager.container_name
+    }
+
+# ==========================================
+# ENDPOINTS PRINCIPAIS (PRESERVADOS)
+# ==========================================
 
 def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[str], extensao: str) -> str:
     """

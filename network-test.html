@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema ID Management - Rede</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        .status-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 5px solid #4CAF50;
+        }
+        .status-offline {
+            border-left-color: #f44336;
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin: 5px;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #45a049;
+        }
+        .btn-primary {
+            background: #2196F3;
+        }
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .info-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .emoji {
+            font-size: 1.5em;
+            margin-right: 10px;
+        }
+        #ip-info {
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Sistema ID Management</h1>
+        <p style="text-align: center; font-size: 1.2em;">Testando sistema em rede - Sem instalação nos clientes!</p>
+        
+        <div id="ip-info">
+            <strong>🌐 IP do Servidor:</strong> <span id="server-ip">Detectando...</span><br>
+            <strong>📍 Você está acessando de:</strong> <span id="client-ip">Detectando...</span>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="emoji">🔧</span>
+                <strong>Backend API</strong><br>
+                <span id="backend-status">Verificando...</span>
+            </div>
+            <div class="info-item">
+                <span class="emoji">💾</span>
+                <strong>Banco de Dados</strong><br>
+                <span id="db-status">Verificando...</span>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <h3>🎯 Acessos Rápidos:</h3>
+            <a href="#" id="app-link" class="btn btn-primary">📱 Sistema Completo</a>
+            <a href="#" id="docs-link" class="btn">📚 API Docs</a>
+            <a href="#" id="health-link" class="btn">❤️ Health Check</a>
+        </div>
+
+        <div class="status-card">
+            <h3>✅ Como Testar:</h3>
+            <ol>
+                <li><strong>Sistema Completo:</strong> Clique em "Sistema Completo" acima</li>
+                <li><strong>API Diretamente:</strong> Clique em "API Docs" para testar endpoints</li>
+                <li><strong>Criar Empresa:</strong> Use a interface para criar uma empresa teste</li>
+                <li><strong>Sincronização:</strong> Dados ficam salvos no PostgreSQL do servidor!</li>
+            </ol>
+        </div>
+
+        <div class="status-card">
+            <h3>🔧 Informações Técnicas:</h3>
+            <ul>
+                <li><strong>Frontend:</strong> React + Vite (porta 5173)</li>
+                <li><strong>Backend:</strong> FastAPI + PostgreSQL (porta 8000)</li>
+                <li><strong>Database:</strong> PostgreSQL em Docker</li>
+                <li><strong>Rede:</strong> Todos os serviços acessíveis via IP</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Detectar IP do servidor e configurar links
+        const serverIP = window.location.hostname;
+        const port5173 = `http://${serverIP}:5173`;
+        const port8000 = `http://${serverIP}:8000`;
+        
+        document.getElementById('server-ip').textContent = serverIP;
+        document.getElementById('app-link').href = port5173;
+        document.getElementById('docs-link').href = `${port8000}/docs`;
+        document.getElementById('health-link').href = `${port8000}/health`;
+
+        // Detectar IP do cliente
+        fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('client-ip').textContent = data.ip;
+            })
+            .catch(() => {
+                document.getElementById('client-ip').textContent = 'Não detectado';
+            });
+
+        // Testar status do backend
+        async function checkBackend() {
+            try {
+                const response = await fetch(`${port8000}/health`);
+                if (response.ok) {
+                    document.getElementById('backend-status').innerHTML = '🟢 Online';
+                } else {
+                    document.getElementById('backend-status').innerHTML = '🟡 Parcial';
+                }
+            } catch {
+                document.getElementById('backend-status').innerHTML = '🔴 Offline';
+            }
+        }
+
+        // Testar status do banco
+        async function checkDatabase() {
+            try {
+                const response = await fetch(`${port8000}/database-info`);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('db-status').innerHTML = `🟢 ${data.type.toUpperCase()}`;
+                } else {
+                    document.getElementById('db-status').innerHTML = '🟡 Inacessível';
+                }
+            } catch {
+                document.getElementById('db-status').innerHTML = '🔴 Offline';
+            }
+        }
+
+        // Executar testes
+        checkBackend();
+        checkDatabase();
+
+        // Atualizar a cada 10 segundos
+        setInterval(() => {
+            checkBackend();
+            checkDatabase();
+        }, 10000);
+    </script>
+</body>
+</html>

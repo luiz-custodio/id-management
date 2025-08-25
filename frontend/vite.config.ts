@@ -8,8 +8,9 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   server: {
-    host: true,
+    host: '0.0.0.0',  // Aceita conexões de qualquer IP da rede
     port: 5173,
     strictPort: true,
+    cors: true
   },
 });
