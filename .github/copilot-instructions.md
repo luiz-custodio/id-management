@@ -47,6 +47,7 @@
 - Explique a primeira vez que um fluxo aparece.
 - Antes de exclusões em cascata, peça confirmação e liste o impacto.
 - Se houver ambiguidade, proponha um padrão com exemplos e confirme.
+- **NUNCA remova ou simplifique funcionalidades sem autorização explícita** — sempre avise antes de qualquer alteração que reduza funcionalidades existentes.
 
 ## Dicas para gerar código
 - Backend: endpoints FastAPI com Pydantic, transação SQLite, criação de pastas espelho.
