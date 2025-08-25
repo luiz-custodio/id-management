@@ -1,4 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+// Configuração automática da API baseada no ambiente
+const getApiBase = () => {
+  // Se estiver no Electron, usar configuração do servidor
+  if (typeof window !== 'undefined' && window.electronAPI) {
+    // Configuração será carregada dinamicamente
+    return "http://192.168.1.52:8000"; // padrão para Electron
+  }
+  
+  // Para web development/production
+  return import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+};
+
+const API_BASE = getApiBase();
 
 export type Empresa = { id: number; id_empresa: string; nome: string };
 export type Unidade = { id: number; id_unidade: string; nome: string; empresa_id: number };

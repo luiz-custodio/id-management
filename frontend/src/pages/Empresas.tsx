@@ -33,7 +33,18 @@ const useSystemConfig = () => {
 
 const EmpresasPage: React.FC = () => {
   // Configuração do sistema
-  const { basePath, configLoading } = useSystemConfig();
+  const { basePath } = useSystemConfig();
+  
+  // Estado para detectar tamanho da janela
+  const [windowSize, setWindowSize] = useState('medium');
+  
+  useEffect(() => {
+    if (window.electronAPI) {
+      window.electronAPI.windowGetSizes().then(({ current }) => {
+        setWindowSize(current);
+      });
+    }
+  }, []);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -813,10 +824,11 @@ const EmpresasPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 text-white flex">
+    <div className="h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 text-white flex overflow-hidden">
       {/* Sidebar com upload */}
-      <div className="w-80 bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm p-6 flex flex-col overflow-y-auto border-r border-blue-800/30">
-        <div className="mb-6">
+      <div className={`${windowSize === 'small' ? 'w-64' : windowSize === 'medium' ? 'w-72' : 'w-80'} bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm ${windowSize === 'small' ? 'p-4' : 'p-6'} flex flex-col h-full border-r border-blue-800/30`}>
+        {/* Logo - Fixo no topo */}
+        <div className={`${windowSize === 'small' ? 'mb-3' : 'mb-6'} flex-shrink-0`}>
           {/* Logo BM Energia oficial */}
           <div className="flex items-center justify-center">
             <img 
@@ -826,7 +838,10 @@ const EmpresasPage: React.FC = () => {
               onError={(e) => {
                 // Fallback para quando a imagem não carregar
                 e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling.style.display = 'flex';
+                const nextElement = e.currentTarget.nextElementSibling as HTMLElement;
+                if (nextElement) {
+                  nextElement.style.display = 'flex';
+                }
               }}
             />
             {/* Fallback logo caso a imagem não carregue */}
@@ -841,28 +856,30 @@ const EmpresasPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Formulário de Upload */}
-        <div className="space-y-4 mb-6">
-          <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
-          
-          {/* Mostra a unidade selecionada se houver com animação */}
-          {selectedUnidade && (
-            <div className="animate-fade-in-down bg-blue-800/15 border border-blue-700/30 rounded-lg p-4 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm shadow-lg shadow-blue-900/20">
-              <p className="text-xs text-blue-300 mb-2 uppercase tracking-wider font-medium">Unidade Selecionada</p>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-white">
-                  {selectedEmpresaNome}
-                </p>
-                <p className="text-xs text-blue-200 flex items-center gap-2">
-                  <MapPin className="w-3 h-3 text-blue-400" />
-                  {selectedUnidadeNome} 
-                  <span className="text-blue-400">• {selectedUnidade}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedEmpresa('');
-                  setSelectedUnidade('');
+        {/* Área de conteúdo principal com scroll */}
+        <div className="flex-1 overflow-y-auto space-y-4">
+          {/* Título e Unidade selecionada */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
+            
+            {/* Mostra a unidade selecionada se houver com animação */}
+            {selectedUnidade && (
+              <div className="animate-fade-in-down bg-blue-800/15 border border-blue-700/30 rounded-lg p-4 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm shadow-lg shadow-blue-900/20">
+                <p className="text-xs text-blue-300 mb-2 uppercase tracking-wider font-medium">Unidade Selecionada</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-white">
+                    {selectedEmpresaNome}
+                  </p>
+                  <p className="text-xs text-blue-200 flex items-center gap-2">
+                    <MapPin className="w-3 h-3 text-blue-400" />
+                    {selectedUnidadeNome} 
+                    <span className="text-blue-400">• {selectedUnidade}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedEmpresa('');
+                    setSelectedUnidade('');
                   setSelectedEmpresaNome('');
                   setSelectedUnidadeNome('');
                 }}
@@ -1083,10 +1100,11 @@ const EmpresasPage: React.FC = () => {
           </button>
           <p className="text-xs text-blue-400 mt-3">PDF, XLSX, CSV, DOCX</p>
         </div>
+        </div>
 
-        {/* Lista de arquivos selecionados */}
+        {/* Lista de arquivos selecionados - fora da área de scroll */}
         {selectedFiles.length > 0 && (
-          <div className="mt-4 space-y-2 animate-fade-in-down">
+          <div className="mt-4 space-y-2 animate-fade-in-down flex-shrink-0">
             <h3 className="text-xs font-medium text-blue-300">
               Arquivos ({selectedFiles.length})
             </h3>
@@ -1141,11 +1159,16 @@ const EmpresasPage: React.FC = () => {
                 </div>
               </div>
             )}
-            
+          </div>
+        )}
+        
+        {/* Área de ação fixa - fora da área de scroll */}
+        {selectedFiles.length > 0 && (
+          <div className="flex-shrink-0 pt-4 border-t border-blue-800/30">
             <button
               onClick={handleUpload}
               disabled={!selectedUnidade || (!autoDeteccao && !tipoArquivo) || selectedFiles.length === 0 || uploading}
-              className="w-full mt-2 bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 rounded text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-700/30 border border-blue-600/30"
+              className="w-full bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 rounded text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-700/30 border border-blue-600/30"
             >
               {uploading ? 'Processando...' : `Visualizar Upload (${selectedFiles.length} arquivo${selectedFiles.length !== 1 ? 's' : ''})`}
             </button>
@@ -1154,7 +1177,7 @@ const EmpresasPage: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-8">
+      <div className={`flex-1 ${windowSize === 'small' ? 'p-2' : 'p-4'} h-full overflow-y-auto`}>
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-4">
@@ -1264,7 +1287,7 @@ const EmpresasPage: React.FC = () => {
         )}
 
         {/* Search Bar */}
-        <div className="relative mb-6">
+        <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-blue-400" />
           <input
             type="text"
@@ -1296,13 +1319,13 @@ const EmpresasPage: React.FC = () => {
                       }`}
                     >
                       <td 
-                        className="px-6 py-3 text-blue-200 font-mono tracking-wider"
+                        className={`${windowSize === 'small' ? 'px-3 py-2' : 'px-6 py-3'} text-blue-200 font-mono tracking-wider`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
                       >
                         {empresa.id_empresa}
                       </td>
                       <td 
-                        className="px-6 py-3 text-white"
+                        className={`${windowSize === 'small' ? 'px-3 py-2' : 'px-6 py-3'} text-white`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
                       >
                         {empresa.nome}

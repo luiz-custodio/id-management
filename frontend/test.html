@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Electron</title>
+</head>
+<body>
+    <h1>Electron Test</h1>
+    <p id="status">Loading...</p>
+    <script>
+        document.getElementById('status').textContent = 'Electron funcionando!';
+        console.log('Test HTML loaded successfully');
+        
+        if (window.electronAPI) {
+            console.log('electronAPI available');
+            document.getElementById('status').textContent = 'Electron API disponível!';
+        } else {
+            console.log('electronAPI NOT available');
+            document.getElementById('status').textContent = 'Electron API não disponível';
+        }
+    </script>
+</body>
+</html>

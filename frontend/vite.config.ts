@@ -13,4 +13,9 @@ export default defineConfig({
     strictPort: true,
     cors: true
   },
+  base: "./", // Importante para Electron
+  build: {
+    outDir: "dist",
+    assetsDir: "assets"
+  }
 });
