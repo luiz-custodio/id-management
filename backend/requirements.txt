@@ -11,3 +11,6 @@ psycopg2-binary>=2.9.5
 asyncpg>=0.28.0
 # Docker management
 docker>=6.1.0
+# Excel import
+pandas>=2.2.2
+openpyxl>=3.1.5

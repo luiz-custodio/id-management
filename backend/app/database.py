@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import StaticPool
@@ -6,7 +7,15 @@ from dotenv import load_dotenv
 import logging
 
 # Carrega variáveis de ambiente
-load_dotenv()
+# 1) .env na raiz do repositório (config global)
+# 2) backend/.env (sobrepõe a raiz)
+try:
+    repo_root = Path(__file__).resolve().parents[2]
+    load_dotenv(repo_root / ".env", override=False)
+    load_dotenv(repo_root / "backend" / ".env", override=True)
+except Exception:
+    # fallback para comportamento padrão
+    load_dotenv()
 
 logger = logging.getLogger(__name__)
 

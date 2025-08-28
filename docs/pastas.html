@@ -1,0 +1,139 @@
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<title>Padrão de Pastas — Sistema de Gerenciamento de IDs</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; color: #1b1b1b; max-width: 980px; margin: 24px auto; padding: 0 16px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .sub { color:#555; font-size: 13px; margin-bottom: 18px; }
+  h2 { font-size: 20px; margin: 24px 0 8px; }
+  h3 { font-size: 16px; margin: 16px 0 6px; }
+  p { margin: 8px 0; }
+  ul { margin: 6px 0 12px 20px; }
+  pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow:auto; border:1px solid #e5e7eb; }
+  code { font-family: Consolas, "SFMono-Regular", Menlo, Monaco, monospace; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; vertical-align: top; }
+  th { background: #f1f5f9; text-align: left; }
+</style>
+</head>
+<body>
+  <h1>Padrão de Pastas — Sistema de Gerenciamento de IDs</h1>
+  <div class="sub">Guia prático para padronizar a hierarquia de pastas por Empresa e Unidade.</div>
+
+  <h2>1) Estrutura Hierárquica Padrão</h2>
+  <p>Cada empresa possui uma pasta raiz no formato:</p>
+  <pre><code>{SIGLA_EMPRESA} - {ID_EMPRESA}/</code></pre>
+
+  <p>Dentro dela, cada unidade (matriz ou filial) segue o padrão:</p>
+  <pre><code>{NOME_UNIDADE} - {ID_UNIDADE}/</code></pre>
+
+  <p>E dentro de cada unidade é criada a seguinte estrutura numérica padronizada:</p>
+  <pre><code>01 Relatórios e Resultados/
+02 Faturas/
+03 Notas de Energia/
+04 CCEE - DRI/
+05 BM Energia/
+06 Documentos do Cliente/
+07 Projetos/
+08 Comercializadoras/
+09 CCEE - Modelagem/
+10 Distribuidora/
+11 ICMS/
+12 Estudos e Análises/</code></pre>
+
+  <h2>2) Sistema de Numeração</h2>
+  <h3>IDs de Empresas</h3>
+  <ul>
+    <li>Formato: 4 dígitos, zero-padded (<code>0001</code>, <code>0002</code>, ...)</li>
+    <li>Exemplo: <code>DOAL - 0005</code></li>
+  </ul>
+
+  <h3>IDs de Unidades</h3>
+  <ul>
+    <li>Formato: 3 dígitos, zero-padded por empresa</li>
+    <li>Reinicia a cada nova empresa</li>
+    <li>Exemplo: <code>Matriz - 001</code>, <code>Filial - 002</code></li>
+  </ul>
+
+  <h2>3) Função de Cada Pasta</h2>
+  <table>
+    <thead><tr><th>Pasta</th><th>Descrição</th></tr></thead>
+    <tbody>
+      <tr><td><strong>01 Relatórios e Resultados</strong></td><td>Relatórios mensais (REL-AAAA-MM) e Resumos (RES-AAAA-MM)</td></tr>
+      <tr><td><strong>02 Faturas</strong></td><td>Faturas de energia (FAT-AAAA-MM)</td></tr>
+      <tr><td><strong>03 Notas de Energia</strong></td><td>Notas CP e LP (NE-CP-AAAA-MM, NE-LP-AAAA-MM)</td></tr>
+      <tr><td><strong>04 CCEE - DRI</strong></td><td>Subpastas por código: CFZ, GFN, LFN, LFRCA, LFRES, PEN, SUM, BOLETOCA, ND</td></tr>
+      <tr><td><strong>05 BM Energia</strong></td><td>Contratos, Procurações, Minutas, Cartas e documentos internos</td></tr>
+      <tr><td><strong>06 Documentos do Cliente</strong></td><td>Arquivos jurídicos e administrativos do cliente (CAD, ADT, COM, LIC, etc.)</td></tr>
+      <tr><td><strong>07 Projetos</strong></td><td>Estudos, planos e modelagens de projetos específicos</td></tr>
+      <tr><td><strong>08 Comercializadoras</strong></td><td>Documentos de agentes e fornecedores de energia</td></tr>
+      <tr><td><strong>09 CCEE - Modelagem</strong></td><td>Arquivos técnicos de simulação e modelagem do mercado</td></tr>
+      <tr><td><strong>10 Distribuidora</strong></td><td>Contratos e correspondências da distribuidora local</td></tr>
+      <tr><td><strong>11 ICMS</strong></td><td>Notas fiscais, apurações e documentos relacionados a tributos</td></tr>
+      <tr><td><strong>12 Estudos e Análises</strong></td><td>Estudos gerais, apresentações, propostas e demonstrativos</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4) Esqueleto Completo de Pastas</h2>
+  <pre><code>cliente/
+└── {SIGLA_EMPRESA} - {ID_EMPRESA}/
+    ├── Matriz - 001/
+    │   ├── 01 Relatórios e Resultados/
+    │   ├── 02 Faturas/
+    │   ├── 03 Notas de Energia/
+    │   ├── 04 CCEE - DRI/
+    │   │   ├── CFZ003/
+    │   │   ├── CFZ004/
+    │   │   ├── GFN001/
+    │   │   ├── LFN001/
+    │   │   ├── LFRCA001/
+    │   │   ├── LFRES001/
+    │   │   ├── PEN001/
+    │   │   ├── SUM001/
+    │   │   ├── BOLETOCA/
+    │   │   └── ND/
+    │   ├── 05 BM Energia/
+    │   ├── 06 Documentos do Cliente/
+    │   ├── 07 Projetos/
+    │   ├── 08 Comercializadoras/
+    │   ├── 09 CCEE - Modelagem/
+    │   ├── 10 Distribuidora/
+    │   ├── 11 ICMS/
+    │   └── 12 Estudos e Análises/
+    │
+    └── Filial - 002/
+        ├── 01 Relatórios e Resultados/
+        ├── 02 Faturas/
+        ├── 03 Notas de Energia/
+        ├── 04 CCEE - DRI/
+        │   ├── CFZ003/
+        │   ├── CFZ004/
+        │   ├── GFN001/
+        │   ├── LFN001/
+        │   ├── LFRCA001/
+        │   ├── LFRES001/
+        │   ├── PEN001/
+        │   ├── SUM001/
+        │   ├── BOLETOCA/
+        │   └── ND/
+        ├── 05 BM Energia/
+        ├── 06 Documentos do Cliente/
+        ├── 07 Projetos/
+        ├── 08 Comercializadoras/
+        ├── 09 CCEE - Modelagem/
+        ├── 10 Distribuidora/
+        ├── 11 ICMS/
+        └── 12 Estudos e Análises/</code></pre>
+
+  <h2>5) Benefícios</h2>
+  <ul>
+    <li><strong>Padronização</strong>: estrutura idêntica para todas as empresas/unidades.</li>
+    <li><strong>Escalabilidade</strong>: fácil inclusão de novas empresas e filiais.</li>
+    <li><strong>Automação</strong>: criação automática pelo sistema.</li>
+    <li><strong>Busca eficiente</strong>: hierarquia previsível e nomes padronizados.</li>
+    <li><strong>Integridade</strong>: evita duplicidade, garante consistência e facilita backup.</li>
+  </ul>
+
+</body>
+</html>

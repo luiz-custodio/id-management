@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
-from .fs_utils import montar_estrutura_unidade
+from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo
 from .organizer import preview_moves, apply_moves
 import os
 import re
@@ -22,8 +22,13 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Carrega variáveis de ambiente
-load_dotenv()
+# Carrega variáveis de ambiente de forma consistente
+try:
+    repo_root = Path(__file__).resolve().parents[2]
+    load_dotenv(repo_root / ".env", override=False)
+    load_dotenv(repo_root / "backend" / ".env", override=True)
+except Exception:
+    load_dotenv()
 
 # Import condicional do docker_manager (evita erro se deps não instaladas)
 try:
@@ -76,7 +81,11 @@ app = FastAPI(
 )
 
 # Caminho base para todas as operações de pastas de clientes (configurável via .env)
-BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", "C:/Users/User/Documents/PROJETOS/id-management/cliente"))
+# Padrão: usa a pasta 'cliente' na raiz do repositório
+# Raiz do repositório é parents[2] (../.. de app/main.py)
+# Ex.: backend/app/main.py -> parents[2] == <repo_root>
+_DEFAULT_BASE = Path(__file__).resolve().parents[2] / "cliente"
+BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", str(_DEFAULT_BASE)))
 
 # Estrutura padrão de subpastas para cada unidade (com numeração para ordenação)
 SUBPASTAS_PADRAO = [
@@ -96,20 +105,21 @@ SUBPASTAS_PADRAO = [
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
 TIPO_PARA_PASTA = {
+    # Mantido apenas como referência; a resolução real usará subpasta_por_tipo
     "FAT": "02 Faturas",
     "NE-CP": "03 Notas de Energia",
     "NE-LP": "03 Notas de Energia", 
     "REL": "01 Relatórios e Resultados",
-    "RES": "01 Relatórios e Resultados",  # Resumo vai para mesma pasta
+    "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
     "DOC-CTR": "06 Documentos do Cliente",
     "DOC-ADT": "06 Documentos do Cliente",
     "DOC-CAD": "06 Documentos do Cliente",
-    "DOC-PRO": "06 Documentos do Cliente",
+    "DOC-PRO": "07 Projetos",
     "DOC-CAR": "06 Documentos do Cliente",
     "DOC-COM": "06 Documentos do Cliente",
     "DOC-LIC": "06 Documentos do Cliente",
-    "CCEE": "04 CCEE - DRI"  # Será refinado depois baseado no subcódigo
+    "CCEE": "04 CCEE - DRI"
 }
 
 # Subpastas específicas para CCEE (cada tipo tem sua pasta)
@@ -131,6 +141,24 @@ Base.metadata.create_all(bind=engine)
 # ==========================================
 # ENDPOINTS DE GERENCIAMENTO DOCKER/POSTGRES
 # ==========================================
+
+@app.get("/health")
+async def health():
+    """Endpoint simples de saúde para scripts e monitoramento."""
+    try:
+        # Tenta abrir/fechar uma sessão rapidamente
+        db = SessionLocal()
+        db.execute(select(1))
+        db.close()
+        status = "ok"
+    except Exception:
+        status = "degraded"
+    return {"status": status}
+
+@app.get("/database-info")
+async def database_info_alias():
+    """Compat: alias para /database/info (usado por scripts e páginas de teste)."""
+    return await get_database_info_endpoint()
 
 @app.get("/database/info")
 async def get_database_info_endpoint():
@@ -236,21 +264,20 @@ def obter_pasta_destino(tipo: str, empresa_nome: str, empresa_id: str, unidade_n
     unidade_folder = empresa_folder / f"{unidade_nome} - {unidade_id}"
     
     # Determina subpasta baseada no tipo
-    if tipo.startswith("CCEE-"):
-        # Para CCEE com subtipo, ex: CCEE-CFZ003 -> pasta CFZ003
-        subtipo = tipo.replace("CCEE-", "")
-        return unidade_folder / "CCEE - DRI" / subtipo
-    
-    elif tipo == "CCEE":
-        # Para CCEE genérico (não deveria acontecer mais, mas mantém compatibilidade)
-        return unidade_folder / "CCEE - DRI"
-    
-    elif tipo in TIPO_PARA_PASTA:
-        return unidade_folder / TIPO_PARA_PASTA[tipo]
-    
-    else:
-        # Se não encontrar mapeamento, coloca em Documentos do Cliente
-        return unidade_folder / "Documentos do Cliente"
+    # Resolve pasta relativa de forma consistente com fs_utils
+    try:
+        if tipo.startswith("CCEE-"):
+            ccee_cod = tipo.replace("CCEE-", "")
+            rel_path = subpasta_por_tipo("CCEE-" + ccee_cod, ccee_cod)
+        elif tipo == "CCEE":
+            rel_path = "04 CCEE - DRI"
+        else:
+            rel_path = subpasta_por_tipo(tipo)
+    except Exception:
+        # Fallback seguro
+        rel_path = "06 Documentos do Cliente"
+
+    return unidade_folder / rel_path
 
 def validar_extensao(filename: str) -> str:
     """
@@ -315,8 +342,8 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
             subpasta_path = unidade_folder / subpasta
             subpasta_path.mkdir(exist_ok=True)
             
-            # Se for CCEE - DRI, cria subpastas dos tipos
-            if "CCEE" in subpasta:
+            # Conforme docs/pastas.html, apenas em "04 CCEE - DRI" criamos subpastas por código
+            if subpasta.startswith("04 CCEE - DRI"):
                 for tipo in CCEE_SUBPASTAS:
                     tipo_folder = subpasta_path / tipo
                     tipo_folder.mkdir(exist_ok=True)
@@ -399,7 +426,10 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
     
     # Cria pasta da unidade no filesystem
     try:
+        # garante base
+        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
         empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        empresa_folder.mkdir(parents=True, exist_ok=True)
         unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
         unidade_folder.mkdir(exist_ok=True)
         
@@ -408,7 +438,7 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
             subpasta_path = unidade_folder / subpasta
             subpasta_path.mkdir(exist_ok=True)
             
-            if "CCEE" in subpasta:
+            if subpasta.startswith("04 CCEE - DRI"):
                 for tipo in CCEE_SUBPASTAS:
                     (subpasta_path / tipo).mkdir(exist_ok=True)
     except Exception as e:
@@ -1032,7 +1062,7 @@ async def sincronizar_empresas_bidirectional(request: SyncRequest, db: Session =
                         subpasta_path.mkdir(exist_ok=True)
                         created_folders += 1
                         
-                        if "CCEE" in subpasta:
+                        if subpasta.startswith("04 CCEE - DRI"):
                             for tipo in CCEE_SUBPASTAS:
                                 tipo_folder = subpasta_path / tipo
                                 if not tipo_folder.exists():
@@ -1154,8 +1184,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                                 print(f"      Criando subpasta: {subpasta}")
                                 subpasta_path.mkdir(exist_ok=True)
                                 
-                                # Se for CCEE - DRI, cria subpastas dos tipos
-                                if "CCEE" in subpasta:
+                                # Apenas em "04 CCEE - DRI" cria subpastas por código
+                                if subpasta.startswith("04 CCEE - DRI"):
                                     for tipo in CCEE_SUBPASTAS:
                                         (subpasta_path / tipo).mkdir(exist_ok=True)
             else:

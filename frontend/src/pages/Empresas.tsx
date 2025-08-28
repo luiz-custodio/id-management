@@ -284,7 +284,7 @@ const EmpresasPage: React.FC = () => {
     };
   };
 
-  // Nova função: força sincronização bidirecional completa com o filesystem
+  // Nova função: sincroniza PASTA → BANCO (importa empresas/unidades a partir do filesystem)
   const handleSync = async () => {
     if (!basePath) {
       setError('Configuração do sistema não carregada');
@@ -295,8 +295,8 @@ const EmpresasPage: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Sincronização bidirecional: remove o que não existe + adiciona o que existe + cria pastas
-      const result = await api.sincronizarEmpresasBidirecional(basePath);
+      // PASTA → BANCO: importa empresas/unidades existentes nas pastas para o banco
+      const result = await api.sincronizarEmpresas(basePath);
       
       // Recarrega a lista atualizada
       await fetchEmpresas();
@@ -305,21 +305,16 @@ const EmpresasPage: React.FC = () => {
       setUnidadesPorEmpresa({});
       setExpandedEmpresas(new Set());
       
-      // Mostra mensagem de sucesso detalhada
-      const totalChanges = result.removed_empresas + result.removed_unidades + result.added_empresas + result.added_unidades;
-      
+      // Mostra mensagem de sucesso detalhada (PASTA → BANCO)
+      const totalChanges = (result.synced || 0) + (result.updated || 0);
       if (totalChanges > 0) {
-        const details = [];
-        if (result.removed_empresas > 0) details.push(`${result.removed_empresas} empresa(s) removida(s)`);
-        if (result.removed_unidades > 0) details.push(`${result.removed_unidades} unidade(s) removida(s)`);
-        if (result.added_empresas > 0) details.push(`${result.added_empresas} empresa(s) adicionada(s)`);
-        if (result.added_unidades > 0) details.push(`${result.added_unidades} unidade(s) adicionada(s)`);
-        if (result.created_folders > 0) details.push(`${result.created_folders} pasta(s) criada(s)`);
-        
-        setError(`✅ Sincronização concluída: ${details.join(', ')}`);
+        const details: string[] = [];
+        if (result.synced > 0) details.push(`${result.synced} empresa(s) nova(s)`);
+        if (result.updated > 0) details.push(`${result.updated} empresa(s) já existente(s)`);
+        setError(`✅ Sincronização (pastas → banco) concluída: ${details.join(', ')}`);
         setTimeout(() => setError(null), 6000);
       } else {
-        setError(`✅ Tudo sincronizado!`);
+        setError(`✅ Nada para importar. Banco já reflete as pastas.`);
         setTimeout(() => setError(null), 2000);
       }
     } catch (err) {

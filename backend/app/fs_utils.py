@@ -17,7 +17,12 @@ SUBPASTAS_NUMERADAS = [
     "12 Estudos e Análises",
 ]
 
-CCEE_SUBCODIGOS = ["CFZ003","CFZ004","GFN001","LFN001","LFRCA001","LFRES001","PEN001","SUM001","DCT006","BOLETOCA","ND"]
+# Subcódigos CCEE usados na pasta 04 e também replicados na 09 (Modelagem)
+# Mantidos conforme documentação oficial do projeto
+CCEE_SUBCODIGOS = [
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001",
+    "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
+]
 
 def montar_estrutura_unidade(base_dir: str, empresa_rotulo: str, unidade_rotulo: str) -> dict:
     base = Path(base_dir)
@@ -37,12 +42,13 @@ def montar_estrutura_unidade(base_dir: str, empresa_rotulo: str, unidade_rotulo:
         else:
             p.mkdir(parents=True, exist_ok=True); criadas.append(str(p))
 
+    # Conforme documentação (docs/pastas.html), as subpastas por código CCEE
+    # são criadas apenas dentro de "04 CCEE - DRI" (não em "09 CCEE - Modelagem").
     for cod in CCEE_SUBCODIGOS:
-        for base_ccee in (uni_dir / "04 CCEE - DRI", uni_dir / "09 CCEE - Modelagem"):
-            p = base_ccee / cod
-            if p.exists(): existentes.append(str(p))
-            else:
-                p.mkdir(parents=True, exist_ok=True); criadas.append(str(p))
+        p = (uni_dir / "04 CCEE - DRI") / cod
+        if p.exists(): existentes.append(str(p))
+        else:
+            p.mkdir(parents=True, exist_ok=True); criadas.append(str(p))
 
     return {"criadas": criadas, "existentes": existentes, "raiz_unidade": str(uni_dir)}
 
