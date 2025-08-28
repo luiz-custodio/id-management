@@ -7,7 +7,7 @@ Este aplicativo foi convertido para Electron para distribuição como aplicativo
 ### Configuração
 
 - **Electron**: v37.3.1
-- **API Backend**: 192.168.1.52:8000 (PostgreSQL)
+- **API Backend**: 127.0.0.1:8000 (PostgreSQL)
 - **Auto-detecção**: O app detecta automaticamente se está rodando no Electron e usa o servidor de rede
 
 ### Comandos Disponíveis
@@ -37,7 +37,7 @@ Para executar: `"ID Management System.exe"`
 
 ### Funcionalidades
 
-✅ Conexão automática com PostgreSQL (192.168.1.52:8000)
+✅ Conexão automática com PostgreSQL (127.0.0.1:8000)
 ✅ Interface React completa
 ✅ Auto-update preparado (GitHub releases)
 ✅ Menu de aplicativo nativo
@@ -45,7 +45,7 @@ Para executar: `"ID Management System.exe"`
 
 ### Configuração de Rede
 
-O aplicativo se conecta automaticamente ao servidor PostgreSQL em `192.168.1.52:8000`. 
+O aplicativo se conecta automaticamente ao servidor PostgreSQL em `127.0.0.1:8000`. 
 Certifique-se de que:
 
 1. O backend está rodando: `docker-compose up -d`

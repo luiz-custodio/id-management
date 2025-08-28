@@ -1,10 +1,12 @@
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 // Configuração do servidor padrão
 const DEFAULT_SERVER_CONFIG = {
-  host: '192.168.1.52',
+  host: '127.0.0.1',
   port: 8000,
   protocol: 'http'
 };
@@ -15,6 +17,9 @@ const WINDOW_SIZES = {
   medium: { width: 1057, height: 593, name: 'Médio' },
   large: { width: 1400, height: 900, name: 'Grande' }
 };
+
+// Caminho do arquivo de configuração persistente
+const CONFIG_PATH = path.join(os.homedir(), '.id-management-config.json');
 
 // Variáveis globais
 let mainWindow = null;
@@ -171,11 +176,11 @@ function createMenu() {
 }
 
 async function showServerConfig() {
-  const result = await dialog.showMessageBox(mainWindow, {
+  await dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Configuração do Servidor',
     message: 'Configurar conexão com servidor ID Management',
-    detail: `Servidor atual: ${serverConfig.protocol}://${serverConfig.host}:${serverConfig.port}`,
+    detail: `Servidor atual: ${serverConfig.protocol}://${serverConfig.host}:${serverConfig.port}\n\nDica: na interface, ajuste via código que usa window.electronAPI.setServerConfig({host, port, protocol}).`,
     buttons: ['OK'],
     defaultId: 0
   });
@@ -234,8 +239,33 @@ ipcMain.handle('window-get-sizes', () => {
   };
 });
 
+// Utilidades de configuração persistente
+function loadServerConfigFromDisk() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+      const cfg = JSON.parse(raw);
+      if (cfg && cfg.host && cfg.port && cfg.protocol) {
+        serverConfig = { ...serverConfig, ...cfg };
+      }
+    }
+  } catch (e) {
+    console.log('Erro ao carregar config:', e);
+  }
+}
+
+function saveServerConfigToDisk() {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(serverConfig, null, 2), 'utf8');
+  } catch (e) {
+    console.log('Erro ao salvar config:', e);
+  }
+}
+
 // Event handlers
 app.whenReady().then(() => {
+  // Carrega config do servidor persistente (se existir)
+  loadServerConfigFromDisk();
   createWindow();
 
   app.on('activate', () => {
@@ -290,5 +320,6 @@ ipcMain.handle('get-server-config', () => {
 
 ipcMain.handle('set-server-config', (event, config) => {
   serverConfig = { ...serverConfig, ...config };
+  saveServerConfigToDisk();
   return serverConfig;
 });

@@ -1,16 +1,20 @@
-// Configuração automática da API baseada no ambiente
-const getApiBase = () => {
-  // Se estiver no Electron, usar configuração do servidor
-  if (typeof window !== 'undefined' && window.electronAPI) {
-    // Configuração será carregada dinamicamente
-    return "http://192.168.1.52:8000"; // padrão para Electron
-  }
-  
-  // Para web development/production
-  return import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
-};
-
-const API_BASE = getApiBase();
+// Resolve dinamicamente a base da API (Electron ou Web)
+async function apiBase(): Promise<string> {
+  try {
+    if (typeof window !== 'undefined' && window.electronAPI?.getServerConfig) {
+      const cfg = await window.electronAPI.getServerConfig();
+      if (cfg?.host && cfg?.port && cfg?.protocol) {
+        return `${cfg.protocol}://${cfg.host}:${cfg.port}`;
+      }
+    }
+  } catch {}
+  // Web (ou fallback): usa VITE_API_BASE ou localhost
+  // @ts-ignore
+  const envVars = (typeof import.meta !== 'undefined' && (import.meta as any).env) ? (import.meta as any).env : undefined;
+  // Suporta VITE_API_BASE (atual) e VITE_API_URL (legacy no .env.example)
+  const envBase = (envVars && (envVars.VITE_API_BASE || envVars.VITE_API_URL)) || undefined;
+  return envBase || "http://127.0.0.1:8000";
+}
 
 export type Empresa = { id: number; id_empresa: string; nome: string };
 export type Unidade = { id: number; id_unidade: string; nome: string; empresa_id: number };
@@ -61,7 +65,8 @@ export type UploadResponse = {
 };
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${API_BASE}${url}`, {
+  const BASE = await apiBase();
+  const r = await fetch(`${BASE}${url}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -92,7 +97,8 @@ export const api = {
     });
   },
   async excluirUnidade(unidadeId: number): Promise<void> {
-    const response = await fetch(`${API_BASE}/unidades/${unidadeId}`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/unidades/${unidadeId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -129,7 +135,8 @@ export const api = {
     });
   },
   async sincronizarEmpresas(basePath: string): Promise<{ synced: number; updated: number; message: string }> {
-    const response = await fetch(`${API_BASE}/empresas/sync`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/empresas/sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -154,7 +161,8 @@ export const api = {
     created_folders: number; 
     message: string; 
   }> {
-    const response = await fetch(`${API_BASE}/empresas/sync-bidirectional`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/empresas/sync-bidirectional`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -172,7 +180,8 @@ export const api = {
     return response.json();
   },
   async criarPastasFromBanco(): Promise<{ pastas_criadas: number; message: string }> {
-    const response = await fetch(`${API_BASE}/empresas/criar-pastas`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/empresas/criar-pastas`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -187,7 +196,8 @@ export const api = {
     return response.json();
   },
   async excluirEmpresa(empresaId: number): Promise<void> {
-    const response = await fetch(`${API_BASE}/empresas/${empresaId}`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/empresas/${empresaId}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -211,7 +221,8 @@ export const api = {
       formData.append('files', files[i]);
     }
 
-    const response = await fetch(`${API_BASE}/upload/preview`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/upload/preview`, {
       method: 'POST',
       body: formData,
     });
@@ -236,7 +247,8 @@ export const api = {
       formData.append(`data_${index}`, item.dataDetectada);
     });
 
-    const response = await fetch(`${API_BASE}/upload/preview-auto`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/upload/preview-auto`, {
       method: 'POST',
       body: formData,
     });
@@ -259,7 +271,8 @@ export const api = {
       formData.append('files', files[i]);
     }
 
-    const response = await fetch(`${API_BASE}/upload/executar`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/upload/executar`, {
       method: 'POST',
       body: formData,
     });
@@ -284,7 +297,8 @@ export const api = {
       formData.append(`data_${index}`, item.dataDetectada);
     });
 
-    const response = await fetch(`${API_BASE}/upload/executar-auto`, {
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/upload/executar-auto`, {
       method: 'POST',
       body: formData,
     });
@@ -298,7 +312,8 @@ export const api = {
   },
 
   async getConfig(): Promise<{ basePath: string; version: string }> {
-    const response = await fetch(`${API_BASE}/config`);
+    const BASE = await apiBase();
+    const response = await fetch(`${BASE}/config`);
     
     if (!response.ok) {
       throw new Error('Erro ao buscar configuração');

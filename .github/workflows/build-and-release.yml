@@ -74,13 +74,19 @@ jobs:
         cd frontend/dist-electron
         Compress-Archive -Path "ID Management System-win32-x64" -DestinationPath "ID-Management-Cliente-Windows.zip" -Force
     
+    - name: 📦 Upload artifact (backup)
+      uses: actions/upload-artifact@v4
+      with:
+        name: ID-Management-Cliente-Windows
+        path: frontend/dist-electron/ID-Management-Cliente-Windows.zip
+    
     - name: 🏷️ Criar Release no GitHub
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.RELEASE_TAG }}
         name: "ID Management System ${{ env.RELEASE_TAG }}"
         body: |
-          ## 🎉 ID Management System ${{ env.RELEASE_TAG }}
+          ## 🎉 ID Management System ${{ github.ref_name }}
           
           ### 📥 Downloads
           - **Cliente Windows**: ID-Management-Cliente-Windows.zip

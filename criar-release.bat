@@ -47,8 +47,7 @@ echo Digite a versao do release (ex: v1.0.0):
 set /p version=
 
 REM Validar formato da versão
-REM Regex compatível com findstr (sem quantificadores +)
-echo %version% | findstr /r "^v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+echo %version% | findstr "^v[0-9]\+\.[0-9]\+\.[0-9]\+$" >nul
 if errorlevel 1 (
     echo ❌ Formato invalido! Use: v1.0.0
     pause
@@ -85,10 +84,10 @@ echo  🎉 RELEASE %version% CRIADO!
 echo ========================================
 echo.
 echo  👀 Acompanhe o build em:
-echo     https://github.com/luiz-custodio/id-management/actions
+echo     https://github.com/SEU-USUARIO/id-management/actions
 echo.
 echo  📥 Download estara disponivel em:
-echo     https://github.com/luiz-custodio/id-management/releases
+echo     https://github.com/SEU-USUARIO/id-management/releases
 echo.
 echo  ⏱️  Tempo estimado: 5-10 minutos
 echo.
