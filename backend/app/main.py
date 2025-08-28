@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="IDS Manager API", 
-    version="0.4.0",
+    version="0.4.1",
     description="Sistema de Gerenciamento de IDs com PostgreSQL via Docker",
     lifespan=lifespan
 )
@@ -357,7 +357,7 @@ def get_config():
     """Retorna configurações do sistema"""
     return {
         "basePath": str(BASE_CLIENTES_PATH),
-        "version": "0.3.0"
+        "version": "0.4.1"
     }
 
 @app.get("/empresas", response_model=list[schemas.EmpresaOut])

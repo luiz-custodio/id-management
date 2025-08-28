@@ -1,32 +1,30 @@
-# 🚀 Script de Release Manual
+# Guia de Release
 
-Este script cria uma nova versão e publica no GitHub automaticamente.
+Este guia mostra como criar uma nova versão e publicar no GitHub automaticamente.
 
-## Como usar:
+## Como usar
 
-```bash
+```
 # 1. Fazer commit das mudanças
 git add .
-git commit -m "feat: melhorias na interface e performance"
+git commit -m "chore(release): v0.4.1"
 
-# 2. Criar e enviar tag
-git tag v1.0.0
-git push origin v1.0.0
+# 2. Criar e enviar tag (formato vX.Y.Z)
+git tag v0.4.1
+git push origin main
+git push origin v0.4.1
 
-# 3. GitHub Actions vai:
-#    - Buildar automaticamente
-#    - Criar release
-#    - Anexar arquivos ZIP
+# 3. GitHub Actions
+#    - builda frontend + electron
+#    - empacota e faz upload do ZIP
+#    - cria release com notas
 ```
 
-## Versionamento:
+## Versionamento
 
-- **v1.0.0** - Primeira versão estável
-- **v1.0.1** - Correções de bugs
-- **v1.1.0** - Novas funcionalidades
-- **v2.0.0** - Mudanças importantes
+- v0.4.1 – Ajustes de rede (config por arquivo), correções Electron
+- v0.4.0 – Primeira versão desktop (Electron)
 
-## Arquivos gerados:
+## Artefatos gerados
 
-- `ID-Management-Cliente-Windows.zip` - App para distribuir
-- `ID-Management-Servidor.zip` - Servidor completo
+- `ID-Management-Cliente-Windows.zip` – App para distribuir aos clientes

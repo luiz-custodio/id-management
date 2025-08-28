@@ -110,10 +110,10 @@ jobs:
           1. Baixar: ID-Management-Cliente-Windows.zip  
           2. Extrair em: C:\ID-Management\
           3. Executar: ID Management System.exe
-          4. App conecta automaticamente em: 192.168.1.52:8000
+          4. App: configurar `%USERPROFILE%\\.id-management-config.json` com `{ "host": "SEU_IP_DO_SERVIDOR", "port": 8000, "protocol": "http" }`
           
           ### 🌐 Configuração de Rede
-          - **IP Servidor**: 192.168.1.52
+          - **IP Servidor**: SEU_IP (ex.: 192.168.1.54)
           - **Porta API**: 8000
           - **Porta PostgreSQL**: 5432
         files: |

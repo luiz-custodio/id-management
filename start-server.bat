@@ -74,7 +74,8 @@ echo ========================================
 echo  ✅ SERVIDOR ATIVO
 echo ========================================
 echo.
-echo  🌐 API Backend: http://192.168.1.52:8000
+echo  🌐 API Backend (local): http://127.0.0.1:8000
+echo  ?? API Backend (rede):  http://SEU_IP:8000
 echo  🗄️  PostgreSQL: localhost:5432
 echo  📁 Pasta Cliente: ../cliente/
 echo.
@@ -91,3 +92,7 @@ REM Se chegar aqui, o servidor foi parado
 echo.
 echo ⚠️  Servidor parado
 pause
+
+
+
+

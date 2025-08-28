@@ -1,55 +1,60 @@
-# 📱 **ID Management System - Electron App**
+# ID Management System - Electron App
 
-## 🚀 **Comandos Disponíveis:**
+## Comandos Disponíveis
 
-### **Desenvolvimento:**
-```bash
+### Desenvolvimento
+```
 npm run electron:dev     # Frontend + Electron em modo dev
-npm run dev             # Apenas frontend (para web)
+npm run dev              # Apenas frontend (para web)
 ```
 
-### **Build e Distribuição:**
-```bash
-npm run build:electron  # Build completo (web + electron)
-npm run electron:pack   # Empacota para seu sistema
-npm run electron:dist   # Cria instalador
+### Build e Distribuição
+```
+npm run build:electron   # Build completo (web + electron)
+npm run electron:pack    # Empacota para seu sistema
+npm run electron:dist    # Cria instalador
 npm run electron:publish # Publica no GitHub Releases
 ```
 
-### **Produção:**
-```bash
-npm run electron        # Roda o app buildado
+### Produção
+```
+npm run electron         # Roda o app buildado
 ```
 
-## 🎯 **Configuração do Servidor:**
+## Configuração do Servidor
 
-O app se conecta automaticamente ao servidor:
-- **IP:** 192.168.1.52
-- **Porta:** 8000
-- **URL:** http://192.168.1.52:8000
+Padrão local:
+- URL: http://127.0.0.1:8000
 
-Você pode alterar no menu: **Arquivo → Configurar Servidor**
+Para clientes em rede, crie no Windows o arquivo:
+`%USERPROFILE%\.id-management-config.json`
 
-## 📦 **Estrutura de Build:**
+Conteúdo de exemplo:
+```
+{ "host": "SEU_IP_DO_SERVIDOR", "port": 8000, "protocol": "http" }
+```
+
+Substitua `SEU_IP_DO_SERVIDOR` pelo IP do servidor (ex.: 192.168.1.54).
+
+## Estrutura de Build
 
 ```
 dist-electron/           # Electron executável
-├── main.js             # Processo principal
-├── preload.js          # Script de segurança
-└── ...
+└── ID Management System-win32-x64/
+    ├── ID Management System.exe
+    └── resources/app.asar
 
-dist/                   # Frontend buildado
+dist/                    # Frontend buildado
 ├── index.html
-├── assets/
-└── ...
+└── assets/
 ```
 
-## 🔄 **Auto-Updates:**
+## Auto-Updates
 
 O app verifica automaticamente por atualizações no GitHub Releases.
 
-## 🎨 **Customização:**
+## Customização
 
-- **Ícones:** pasta `build/`
-- **Configuração:** `package.json` → `build`
-- **Menu:** `electron/main.ts`
+- Ícones: pasta `build/`
+- Configuração: `package.json` → `build`
+- Menu/Janela: `electron/main.cjs`
