@@ -13,6 +13,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write  # necessário para criar tag/release
+
 jobs:
   build-windows:
     name: 🏗️ Build Windows
@@ -21,6 +24,28 @@ jobs:
     steps:
     - name: 📁 Checkout código
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 🏷️ Definir TAG do release
+      shell: pwsh
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          echo "RELEASE_TAG=${{ github.event.inputs.version }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        }
+        else {
+          echo "RELEASE_TAG=${{ github.ref_name }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        }
+
+    - name: 🏷️ Criar tag (apenas em execução manual)
+      if: ${{ github.event_name == 'workflow_dispatch' }}
+      shell: pwsh
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag "$env:RELEASE_TAG"
+        git push origin "$env:RELEASE_TAG"
     
     - name: 🟢 Setup Node.js 18
       uses: actions/setup-node@v4
@@ -52,10 +77,10 @@ jobs:
     - name: 🏷️ Criar Release no GitHub
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref_name }}
-        name: "ID Management System ${{ github.ref_name }}"
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: "ID Management System ${{ env.RELEASE_TAG }}"
         body: |
-          ## 🎉 ID Management System ${{ github.ref_name }}
+          ## 🎉 ID Management System ${{ env.RELEASE_TAG }}
           
           ### 📥 Downloads
           - **Cliente Windows**: ID-Management-Cliente-Windows.zip
