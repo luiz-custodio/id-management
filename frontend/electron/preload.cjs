@@ -12,6 +12,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowTogglePin: () => ipcRenderer.invoke('window-toggle-pin'),
   windowResize: (sizeKey) => ipcRenderer.invoke('window-resize', sizeKey),
   windowGetSizes: () => ipcRenderer.invoke('window-get-sizes'),
+
+  // Auto update
+  checkForUpdates: () => ipcRenderer.invoke('updater-check'),
+  quitAndInstall: () => ipcRenderer.invoke('updater-quit-and-install'),
+  onUpdateEvent: (callback) => {
+    const listener = (_event, data) => callback(data)
+    ipcRenderer.on('auto-update', listener)
+    return () => ipcRenderer.removeListener('auto-update', listener)
+  },
   
   // Informações do sistema
   platform: process.platform,

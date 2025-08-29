@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -27,6 +28,16 @@ let serverConfig = DEFAULT_SERVER_CONFIG;
 let currentWindowSize = 'medium'; // Tamanho padrão
 
 const isDev = process.env.NODE_ENV === 'development';
+
+// Configurar logger do app e do updater
+try {
+  log.initialize?.();
+  log.transports.file.level = 'info';
+  autoUpdater.logger = log;
+  log.info('ID Management System iniciado');
+} catch (e) {
+  console.log('Logger não inicializado', e);
+}
 
 // Funções para gerenciar preferências de tamanho
 function loadWindowSizePreference() {
@@ -108,8 +119,13 @@ function createWindow() {
     mainWindow.show();
     
     if (!isDev) {
-      // Verificar updates apenas em produção
-      autoUpdater.checkForUpdatesAndNotify();
+      // Verificar updates apenas em produção (sem notificação nativa)
+      try {
+        autoUpdater.autoDownload = true;
+        autoUpdater.checkForUpdates();
+      } catch (e) {
+        log.error('Erro ao verificar updates', e);
+      }
     }
   });
 
@@ -165,7 +181,7 @@ function createMenu() {
         },
         {
           label: 'Verificar Atualizações',
-          click: () => autoUpdater.checkForUpdatesAndNotify()
+          click: () => autoUpdater.checkForUpdates()
         }
       ]
     }
@@ -187,10 +203,11 @@ async function showServerConfig() {
 }
 
 function showAbout() {
+  const version = app.getVersion();
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Sobre ID Management System',
-    message: 'ID Management System v0.1.0',
+    message: `ID Management System v${version}`,
     detail: 'Sistema de gerenciamento de documentos empresariais\n\nDesenvolvido com Electron + React + FastAPI'
   });
 }
@@ -282,29 +299,42 @@ app.on('window-all-closed', () => {
 });
 
 // Auto updater events
+function sendUpdate(status, payload = {}) {
+  try {
+    log.info('[updater]', status, payload);
+    if (mainWindow) {
+      mainWindow.webContents.send('auto-update', { status, ...payload });
+    }
+  } catch (_) {}
+}
+
 autoUpdater.on('checking-for-update', () => {
-  console.log('Verificando atualizações...');
+  sendUpdate('checking');
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Atualização disponível:', info);
+  sendUpdate('available', { version: info?.version });
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  console.log('Nenhuma atualização disponível:', info);
+  sendUpdate('not-available', { version: info?.version });
 });
 
 autoUpdater.on('error', (err) => {
-  console.error('Erro no auto-updater:', err);
+  sendUpdate('error', { message: err?.message || String(err) });
+});
+
+autoUpdater.on('download-progress', (p) => {
+  sendUpdate('progress', { percent: p?.percent || 0, bytesPerSecond: p?.bytesPerSecond, transferred: p?.transferred, total: p?.total });
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Atualização baixada:', info);
+  sendUpdate('downloaded', { version: info?.version });
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Atualização Pronta',
     message: 'Atualização baixada com sucesso',
-    detail: 'A aplicação será reiniciada para aplicar a atualização.',
+    detail: 'A aplicação pode ser reiniciada para aplicar a atualização.',
     buttons: ['Reiniciar Agora', 'Mais Tarde']
   }).then((result) => {
     if (result.response === 0) {
@@ -316,6 +346,26 @@ autoUpdater.on('update-downloaded', (info) => {
 // IPC handlers
 ipcMain.handle('get-server-config', () => {
   return serverConfig;
+});
+
+// Updater IPC handlers
+ipcMain.handle('updater-check', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return result?.updateInfo || null;
+  } catch (e) {
+    log.error('Erro no updater-check', e);
+    sendUpdate('error', { message: e?.message || String(e) });
+    return null;
+  }
+});
+
+ipcMain.handle('updater-quit-and-install', () => {
+  try {
+    autoUpdater.quitAndInstall();
+  } catch (e) {
+    log.error('Erro no quitAndInstall', e);
+  }
 });
 
 ipcMain.handle('set-server-config', (event, config) => {

@@ -63,6 +63,17 @@ jobs:
       run: |
         cd frontend
         npm run build
+
+    - name: 🚀 Publicar artefatos (auto-update via electron-builder)
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        cd frontend
+        # Extrair versão sem o prefixo 'v' da tag
+        $version = $env:RELEASE_TAG -replace '^v',''
+        echo "Empacotando e publicando versão $version"
+        npm run electron:publish -- --config.extraMetadata.version=$version
     
     - name: ⚡ Build Electron App
       run: |
@@ -89,7 +100,8 @@ jobs:
           ## 🎉 ID Management System ${{ github.ref_name }}
           
           ### 📥 Downloads
-          - **Cliente Windows**: ID-Management-Cliente-Windows.zip
+          - **Instalador Windows (com auto-update)**: será anexado como `ID-Management-Setup-<versão>.exe` pelo electron-builder
+          - **ZIP do cliente (backup)**: ID-Management-Cliente-Windows.zip
           
           ### 🚀 Novidades desta versão
           - ✅ Interface desktop nativa com Electron

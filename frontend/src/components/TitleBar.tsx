@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, X, Pin, PinOff, Monitor } from 'lucide-react';
+import { Minus, X, Pin, PinOff, Monitor, RefreshCw } from 'lucide-react';
 
 const TitleBar: React.FC = () => {
   const [isPinned, setIsPinned] = useState(false);
@@ -36,6 +36,12 @@ const TitleBar: React.FC = () => {
     }
   };
 
+  const handleCheckUpdates = async () => {
+    if (window.electronAPI) {
+      await window.electronAPI.checkForUpdates?.();
+    }
+  };
+
   const handleSizeChange = async (sizeKey: string) => {
     if (window.electronAPI) {
       const result = await window.electronAPI.windowResize(sizeKey);
@@ -64,6 +70,14 @@ const TitleBar: React.FC = () => {
 
       {/* Controles da janela */}
       <div className="flex items-center gap-1 electron-no-drag">
+        {/* Verificar atualizações */}
+        <button
+          onClick={handleCheckUpdates}
+          className="w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+          title="Verificar atualizações"
+        >
+          <RefreshCw size={12} />
+        </button>
         {/* Seletor de Tamanho */}
         <div className="relative">
           <button

@@ -19,6 +19,11 @@ declare global {
         sizes: Record<string, { width: number; height: number; name: string }>;
         current: string;
       }>;
+
+      // Auto-update
+      checkForUpdates: () => Promise<any>;
+      quitAndInstall: () => Promise<void>;
+      onUpdateEvent: (callback: (evt: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
       
       platform: string;
       version: string;

@@ -31,6 +31,7 @@
     "@tanstack/react-query-devtools": "^5.85.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-log": "^5.2.0",
     "electron-updater": "^6.6.2",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.468.0",
@@ -80,9 +81,27 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "dir"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
     },
-    "nsis": false,
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": true,
+      "artifactName": "ID-Management-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "vPrefixedTagName": true
+      }
+    ],
     "compression": "store",
     "extraMetadata": {
       "main": "electron/main.cjs"
