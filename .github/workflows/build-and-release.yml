@@ -88,7 +88,12 @@ jobs:
         $pkgPath = "package.json"
         $pkgText = Get-Content $pkgPath -Raw
         $pkgObj = $pkgText | ConvertFrom-Json
-        $pkgObj.repository = @{ type = 'git'; url = "https://github.com/$full.git" }
+        $repoObj = [pscustomobject]@{ type = 'git'; url = "https://github.com/$full.git" }
+        if ($pkgObj.PSObject.Properties.Match('repository').Count -eq 0) {
+          $pkgObj | Add-Member -MemberType NoteProperty -Name repository -Value $repoObj -Force
+        } else {
+          $pkgObj.repository = $repoObj
+        }
         $pkgObj | ConvertTo-Json -Depth 100 | Set-Content -Path $pkgPath -Encoding utf8
 
         echo "Empacotando e publicando versão $version"
