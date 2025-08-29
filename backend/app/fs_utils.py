@@ -54,12 +54,17 @@ def montar_estrutura_unidade(base_dir: str, empresa_rotulo: str, unidade_rotulo:
 
 def subpasta_por_tipo(tipo: str, ccee_cod: str | None = None) -> str:
     t = tipo.upper()
-    if t == "FAT": return "02 Faturas"
-    if t in {"NE-CP","NE-LP"}: return "03 Notas de Energia"
-    if t == "REL": return "01 Relatórios e Resultados"
-    if t == "EST": return "12 Estudos e Análises"
-    if t.startswith("DOC-PRO"): return "07 Projetos"
-    if t.startswith("DOC-"): return "06 Documentos do Cliente"
+    if t == "FAT":
+        return "02 Faturas"
+    if t in {"NE-CP", "NE-LP"}:
+        return "03 Notas de Energia"
+    if t == "REL":
+        return "01 Relatórios e Resultados"
+    if t == "EST":
+        return "12 Estudos e Análises"
+    # DOC e MIN residem em "05 BM Energia" (ver docs/dicionario-tags)
+    if t.startswith("DOC-") or t.startswith("MIN-"):
+        return "05 BM Energia"
     if t.startswith("CCEE-"):
         cod = ccee_cod or t.replace("CCEE-", "")
         return os.path.join("04 CCEE - DRI", cod)

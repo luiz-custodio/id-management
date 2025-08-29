@@ -211,13 +211,14 @@ const EmpresasPage: React.FC = () => {
   // Função para detectar tipo e data automaticamente
   const analisarArquivoAutomaticamente = (file: File) => {
     const nome = file.name.toLowerCase();
+    const nomeNorm = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     let tipoDetectado = '';
     let dataDetectada = '';
     let confianca = 0;
     let motivo = '';
 
     // REGRA 1: Faturas - apenas data no nome (ex: "2025-08.pdf")
-    const regexDataFatura = /^(\d{4})-(\d{2})\.(pdf|xlsx?|docx?)$/i;
+    const regexDataFatura = /^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx?|docx?)$/i;
     const matchFatura = nome.match(regexDataFatura);
     if (matchFatura) {
       tipoDetectado = 'FAT';
@@ -249,7 +250,47 @@ const EmpresasPage: React.FC = () => {
       motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
     }
     
-    // REGRA 3: Relatórios - contém "relatório" e data "JUL-25"
+    // REGRA 3: Estudo - contém "estudo" no nome → usa data de modificação
+    else if (nome.includes('estudo')) {
+      tipoDetectado = 'EST';
+      const dataMod = new Date(file.lastModified);
+      const ano = dataMod.getFullYear();
+      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
+      dataDetectada = `${ano}-${mes}`;
+      confianca = 90;
+      motivo = 'Estudo detectado: nome contém "estudo" - usando data de modificação';
+    }
+
+    // REGRA 4: Documentos específicos (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo
+    else if (
+      nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))
+      || nome.includes('aditivo')
+      || nome.includes('contrato')
+      || nome.includes('procuração') || nomeNorm.includes('procuracao')
+    ) {
+      const dataMod = new Date(file.lastModified);
+      const ano = dataMod.getFullYear();
+      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
+      // Para todos os DOC-* usamos apenas AAAA-MM
+      dataDetectada = `${ano}-${mes}`;
+      confianca = 90;
+
+      if (nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))) {
+        tipoDetectado = 'DOC-CAR';
+        motivo = 'Documento detectado: "Carta denúncia" - usando mês/ano da modificação';
+      } else if (nome.includes('aditivo')) {
+        tipoDetectado = 'DOC-ADT';
+        motivo = 'Documento detectado: "Aditivo" - usando mês/ano da modificação';
+      } else if (nome.includes('contrato')) {
+        tipoDetectado = 'DOC-CTR';
+        motivo = 'Documento detectado: "Contrato" - usando mês/ano da modificação';
+      } else if (nome.includes('procuração') || nomeNorm.includes('procuracao')) {
+        tipoDetectado = 'DOC-PRO';
+        motivo = 'Documento detectado: "Procuração" - usando mês/ano da modificação';
+      }
+    }
+
+    // REGRA 5: Relatórios - contém "relatório" e data "JUL-25"
     else if (nome.includes('relatorio') || nome.includes('relatório')) {
       tipoDetectado = 'REL';
       
@@ -935,9 +976,11 @@ const EmpresasPage: React.FC = () => {
               <div className="mt-2 ml-5 text-xs text-slate-500 leading-relaxed">
                 <div className="opacity-75">
                   <strong className="text-slate-400">Regras de detecção:</strong><br/>
-                  • <span className="text-blue-400">Faturas:</span> apenas data YYYY-MM no nome<br/>
-                  • <span className="text-green-400">Notas:</span> "nota", "CP" ou "LP" no nome<br/>
-                  • <span className="text-yellow-400">Relatórios:</span> "relatório" + data "JUL-25"<br/>
+                  • <span className="text-blue-400">Faturas:</span> data no nome (YYYY-MM). Ex.: 2025-08.pdf/xlsx/xlsm<br/>
+                  • <span className="text-green-400">Notas:</span> contém "nota", "CP" ou "LP" (data = modificação menos 1 mês)<br/>
+                  • <span className="text-amber-400">Estudos:</span> contém "estudo" (data = mês/ano da modificação)<br/>
+                  • <span className="text-yellow-400">Relatórios:</span> contém "relatório" + mês abreviado, ex.: JUL-25<br/>
+                  • <span className="text-cyan-400">Docs:</span> "Carta denúncia", "Contrato", "Procuração", "Aditivo" (data = mês/ano da modificação)
                   • <span className="text-slate-400">Não identificado:</span> seleção manual necessária
                 </div>
               </div>
@@ -1115,7 +1158,7 @@ const EmpresasPage: React.FC = () => {
             multiple
             onChange={handleFileSelect}
             className="hidden"
-            accept=".pdf,.xlsx,.csv,.docx"
+            accept=".pdf,.xlsx,.xlsm,.csv,.docx"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1123,7 +1166,7 @@ const EmpresasPage: React.FC = () => {
           >
             Selecionar Arquivos
           </button>
-          <p className="text-xs text-blue-400 mt-3">PDF, XLSX, CSV, DOCX</p>
+          <p className="text-xs text-blue-400 mt-3">PDF, XLSX, XLSM, CSV, DOCX</p>
         </div>
         </div>
 

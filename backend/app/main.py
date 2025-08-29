@@ -105,20 +105,21 @@ SUBPASTAS_PADRAO = [
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
 TIPO_PARA_PASTA = {
-    # Mantido apenas como referência; a resolução real usará subpasta_por_tipo
+    # Referência (a resolução real usa fs_utils.subpasta_por_tipo)
     "FAT": "02 Faturas",
     "NE-CP": "03 Notas de Energia",
     "NE-LP": "03 Notas de Energia", 
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
-    "DOC-CTR": "06 Documentos do Cliente",
-    "DOC-ADT": "06 Documentos do Cliente",
-    "DOC-CAD": "06 Documentos do Cliente",
-    "DOC-PRO": "07 Projetos",
-    "DOC-CAR": "06 Documentos do Cliente",
-    "DOC-COM": "06 Documentos do Cliente",
-    "DOC-LIC": "06 Documentos do Cliente",
+    # DOC e MIN residem em "05 BM Energia" conforme dicionário de TAGs
+    "DOC-CTR": "05 BM Energia",
+    "DOC-ADT": "05 BM Energia",
+    "DOC-CAD": "05 BM Energia",
+    "DOC-PRO": "05 BM Energia",
+    "DOC-CAR": "05 BM Energia",
+    "DOC-COM": "05 BM Energia",
+    "DOC-LIC": "05 BM Energia",
     "CCEE": "04 CCEE - DRI"
 }
 
@@ -239,11 +240,13 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
             ano_mes = agora.strftime("%Y-%m")
         nome_base = f"{tipo}-{ano_mes}"
     
-    # Para documentos (DOC-*)
+    # Para documentos (DOC-*) — usar sempre AAAA-MM
     elif tipo.startswith("DOC-"):
-        # DOC usa formato: DOC-SUBTIPO-AAAA[-MM[-DD]]
-        ano = agora.strftime("%Y")
-        nome_base = f"{tipo}-{ano}"
+        if not ano_mes:
+            ano_mes = agora.strftime("%Y-%m")
+        # normaliza para AAAA-MM (trunca dia se vier)
+        ano_mes = ano_mes[:7]
+        nome_base = f"{tipo}-{ano_mes}"
     
     else:
         # Tipo não reconhecido, usa formato básico
@@ -283,13 +286,82 @@ def validar_extensao(filename: str) -> str:
     """
     Valida e extrai a extensão do arquivo
     """
-    extensoes_permitidas = ['pdf', 'xlsx', 'csv', 'docx']
+    extensoes_permitidas = ['pdf', 'xlsx', 'xlsm', 'csv', 'docx']
     extensao = filename.split('.')[-1].lower()
     
     if extensao not in extensoes_permitidas:
         raise HTTPException(400, f"Extensão não permitida. Use: {', '.join(extensoes_permitidas)}")
     
     return extensao
+
+
+def _prev_month_str(dt: datetime) -> str:
+    y = dt.year
+    m = dt.month - 1
+    if m == 0:
+        m = 12
+        y -= 1
+    return f"{y}-{m:02d}"
+
+
+def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
+    """
+    Fallback simples de detecção de tipo/data no backend quando não vier do cliente.
+    Regras (espelhadas do frontend, com limitações por não ter lastModified real):
+      - FAT: nome 'YYYY-MM.ext' → data do nome
+      - NE-CP/NE-LP: contém 'nota'/'cp'/'lp' → data = mês anterior (aproximação)
+      - EST: contém 'estudo' → data = mês atual
+      - REL: contém 'relatorio|relatório' + 'MMM-YY' → converte
+    """
+    nome = filename.lower()
+    # normaliza removendo acentos para comparação robusta
+    try:
+        import unicodedata as _ud
+        nome_norm = ''.join(c for c in _ud.normalize('NFD', nome) if _ud.category(c) != 'Mn')
+    except Exception:
+        nome_norm = nome
+    # FAT – YYYY-MM
+    import re as _re
+    m = _re.match(r"^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx|csv|docx)$", nome)
+    if m:
+        ano_mes = f"{m.group(1)}-{m.group(2)}"
+        return ("FAT", ano_mes, f"Detectado FAT pelo nome: {ano_mes}")
+
+    # Notas – 'nota'/'cp'/'lp' → mês anterior
+    if ("nota" in nome) or ("cp" in nome) or ("lp" in nome):
+        tipo = "NE-CP" if "cp" in nome else ("NE-LP" if "lp" in nome else "NE-CP")
+        ano_mes = _prev_month_str(datetime.now())
+        return (tipo, ano_mes, f"Detectado {tipo} por palavra-chave; usando mês anterior: {ano_mes}")
+
+    # Estudo – contém 'estudo'
+    if "estudo" in nome or "estudos" in nome:
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("EST", ano_mes, "Detectado EST por palavra-chave; usando mês atual")
+
+    # Documentos específicos (prioridade: aditivo > contrato > procuração; datas conforme dicionário)
+    if ("carta" in nome and ("denúncia" in nome or "denuncia" in nome_norm)):
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("DOC-CAR", ano_mes, "Detectado Carta Denúncia; usando mês atual")
+    if "aditivo" in nome:
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("DOC-ADT", ano_mes, "Detectado Aditivo; usando mês atual")
+    if "contrato" in nome:
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("DOC-CTR", ano_mes, "Detectado Contrato; usando mês atual")
+    if ("procuração" in nome) or ("procuracao" in nome_norm):
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("DOC-PRO", ano_mes, "Detectado Procuração; usando mês atual")
+
+    # Relatórios – 'relatório' + MESES-YY
+    if ("relatorio" in nome) or ("relatório" in nome):
+        m2 = _re.search(r"(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-(\d{2})", nome)
+        if m2:
+            mapa = {"jan": "01", "fev": "02", "mar": "03", "abr": "04", "mai": "05", "jun": "06", "jul": "07", "ago": "08", "set": "09", "out": "10", "nov": "11", "dez": "12"}
+            mes = mapa.get(m2.group(1).lower(), "01")
+            ano = f"20{m2.group(2)}"
+            return ("REL", f"{ano}-{mes}", f"Detectado REL por mês abreviado: {m2.group(0).upper()}")
+
+    return ("DOC-COM", None, "Não identificado – default DOC-COM")
 
 def get_db():
     db = SessionLocal()
@@ -581,9 +653,14 @@ async def preview_upload_auto(
     for i, file in enumerate(files):
         try:
             # Pega tipo e data específicos para este arquivo
-            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
-            mes_ano = form_data.get(f'data_{i}')
-            
+            tipo_arquivo = (form_data.get(f'tipo_{i}') or '').strip()
+            mes_ano = (form_data.get(f'data_{i}') or '').strip()
+
+            if not tipo_arquivo:
+                tipo_arquivo, mes_ano_detect, _mot = detectar_tipo_data_backend(file.filename)
+                if not mes_ano:
+                    mes_ano = mes_ano_detect or mes_ano
+
             # Valida extensão
             extensao = validar_extensao(file.filename)
             
@@ -733,9 +810,14 @@ async def executar_upload_auto(
     for i, file in enumerate(files):
         try:
             # Pega tipo e data específicos para este arquivo
-            tipo_arquivo = form_data.get(f'tipo_{i}', 'FAT')
-            mes_ano = form_data.get(f'data_{i}')
-            
+            tipo_arquivo = (form_data.get(f'tipo_{i}') or '').strip()
+            mes_ano = (form_data.get(f'data_{i}') or '').strip()
+
+            if not tipo_arquivo:
+                tipo_arquivo, mes_ano_detect, _mot = detectar_tipo_data_backend(file.filename)
+                if not mes_ano:
+                    mes_ano = mes_ano_detect or mes_ano
+
             # Valida extensão
             extensao = validar_extensao(file.filename)
             
