@@ -72,6 +72,25 @@ jobs:
         cd frontend
         # Extrair versão sem o prefixo 'v' da tag
         $version = $env:RELEASE_TAG -replace '^v',''
+        # Extrair owner e repo do contexto do GitHub
+        $full = "${{ github.repository }}"  # formato: owner/repo
+        $parts = $full -split '/'
+        $owner = $parts[0]
+        $repo = $parts[1]
+        # Disponível já neste step
+        $env:ELECTRON_PUBLISH_OWNER = $owner
+        $env:ELECTRON_PUBLISH_REPO  = $repo
+        # E persiste para próximos steps, se necessário
+        echo "ELECTRON_PUBLISH_OWNER=$owner" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "ELECTRON_PUBLISH_REPO=$repo"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        
+        # Garantir que package.json tem "repository" (electron-builder exige)
+        $pkgPath = "package.json"
+        $pkgText = Get-Content $pkgPath -Raw
+        $pkgObj = $pkgText | ConvertFrom-Json
+        $pkgObj.repository = @{ type = 'git'; url = "https://github.com/$full.git" }
+        $pkgObj | ConvertTo-Json -Depth 100 | Set-Content -Path $pkgPath -Encoding utf8
+
         echo "Empacotando e publicando versão $version"
         npm run electron:publish -- --config.extraMetadata.version=$version
     

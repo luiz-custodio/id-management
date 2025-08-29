@@ -98,7 +98,9 @@
     "publish": [
       {
         "provider": "github",
-        "vPrefixedTagName": true
+        "vPrefixedTagName": true,
+        "owner": "${env.ELECTRON_PUBLISH_OWNER}",
+        "repo": "${env.ELECTRON_PUBLISH_REPO}"
       }
     ],
     "compression": "store",
