@@ -1,6 +1,19 @@
 const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const log = require('electron-log');
+let log;
+try {
+  log = require('electron-log');
+} catch (e) {
+  // Fallback simples caso electron-log não esteja instalado
+  log = {
+    info: (...args) => console.log('[info]', ...args),
+    error: (...args) => console.error('[error]', ...args),
+    warn: (...args) => console.warn('[warn]', ...args),
+    debug: (...args) => console.debug('[debug]', ...args),
+    transports: { file: { level: 'info' } },
+    initialize: () => {}
+  };
+}
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
