@@ -154,6 +154,9 @@ jobs:
           - **Porta PostgreSQL**: 5432
         files: |
           frontend/dist-electron/ID-Management-Cliente-Windows.zip
+          frontend/dist-electron/ID-Management-Setup-*.exe
+          frontend/dist-electron/latest.yml
+          frontend/dist-electron/*.blockmap
         draft: false
         prerelease: false
         make_latest: true

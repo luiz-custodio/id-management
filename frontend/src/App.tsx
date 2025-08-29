@@ -18,6 +18,9 @@ function App() {
         case 'checking':
           toast.loading('Verificando atualizações...', { id: 'updater' });
           break;
+        case 'disabled':
+          toast.info('Atualizações automáticas indisponíveis no modo portátil. Use o instalador.', { id: 'updater' });
+          break;
         case 'available':
           toast.message(`Nova versão disponível: ${evt.version}. Baixando...`, { id: 'updater' });
           break;

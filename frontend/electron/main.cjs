@@ -41,6 +41,11 @@ let serverConfig = DEFAULT_SERVER_CONFIG;
 let currentWindowSize = 'medium'; // Tamanho padrão
 
 const isDev = process.env.NODE_ENV === 'development';
+const UPDATE_CONFIG_PATH = path.join(process.resourcesPath || '', 'app-update.yml');
+const hasUpdateConfig = () => {
+  try { return fs.existsSync(UPDATE_CONFIG_PATH); } catch { return false; }
+};
+const canAutoUpdate = () => !isDev && hasUpdateConfig();
 
 // Configurar logger do app e do updater
 try {
@@ -131,14 +136,15 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
-    if (!isDev) {
-      // Verificar updates apenas em produção (sem notificação nativa)
+    if (canAutoUpdate()) {
       try {
         autoUpdater.autoDownload = true;
         autoUpdater.checkForUpdates();
       } catch (e) {
         log.error('Erro ao verificar updates', e);
       }
+    } else {
+      log.warn('Auto-update desabilitado: app-update.yml não encontrado (provável modo portátil).');
     }
   });
 
@@ -194,7 +200,18 @@ function createMenu() {
         },
         {
           label: 'Verificar Atualizações',
-          click: () => autoUpdater.checkForUpdates()
+          click: () => {
+            if (canAutoUpdate()) {
+              autoUpdater.checkForUpdates();
+            } else {
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Atualizações Indisponíveis',
+                message: 'Execute o instalador (Setup) para habilitar atualizações automáticas.',
+                detail: 'Você está executando a versão portátil. Baixe e instale o arquivo ID-Management-Setup-<versão>.exe do GitHub Releases.'
+              });
+            }
+          }
         }
       ]
     }
@@ -364,6 +381,10 @@ ipcMain.handle('get-server-config', () => {
 // Updater IPC handlers
 ipcMain.handle('updater-check', async () => {
   try {
+    if (!canAutoUpdate()) {
+      sendUpdate('disabled', { message: 'Auto-update indisponível no modo portátil. Instale via Setup.' });
+      return { disabled: true };
+    }
     const result = await autoUpdater.checkForUpdates();
     return result?.updateInfo || null;
   } catch (e) {
