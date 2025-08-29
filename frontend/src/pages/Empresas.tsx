@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2 } from 'lucide-react';
+import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Empresa, Unidade } from '../lib/api';
 
@@ -99,6 +99,20 @@ const EmpresasPage: React.FC = () => {
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ordenação
+  const [sortBy, setSortBy] = useState<'id' | 'nome'>('id');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const toggleSort = (key: 'id' | 'nome') => {
+    setSortBy(prev => {
+      if (prev === key) {
+        setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        return prev;
+      }
+      setSortDir('asc');
+      return key;
+    });
+  };
 
   // Função para obter mês/ano atual no formato YYYY-MM
   const getCurrentMonth = () => {
@@ -522,6 +536,22 @@ const EmpresasPage: React.FC = () => {
     () => empresas.filter(e => e.nome.toLowerCase().includes(searchTerm.toLowerCase())),
     [empresas, searchTerm]
   );
+
+  const sortedEmpresas = useMemo(() => {
+    const arr = [...filteredEmpresas];
+    arr.sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'id') {
+        const ai = parseInt(String((a as any).id_empresa ?? a.id ?? 0));
+        const bi = parseInt(String((b as any).id_empresa ?? b.id ?? 0));
+        cmp = (ai || 0) - (bi || 0);
+      } else {
+        cmp = a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [filteredEmpresas, sortBy, sortDir]);
 
   // Handlers para drag and drop
   const handleDrag = (e: React.DragEvent) => {
@@ -1298,13 +1328,35 @@ const EmpresasPage: React.FC = () => {
           <table className="w-full">
             <thead>
               <tr className="border-b border-blue-800/40 text-sm bg-gradient-to-r from-blue-800/25 to-blue-700/25">
-                <th className="text-left px-6 py-3 font-semibold text-blue-300 w-24">ID</th>
-                <th className="text-left px-6 py-3 font-semibold text-blue-300">Nome</th>
+                <th className="text-left px-6 py-3 font-semibold text-blue-300 w-24">
+                  <button onClick={() => toggleSort('id')} className="inline-flex items-center gap-1 hover:text-white transition-colors">
+                    ID
+                    {sortBy !== 'id' ? (
+                      <ArrowUpDown className="w-3 h-3 opacity-60" />
+                    ) : sortDir === 'asc' ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+                </th>
+                <th className="text-left px-6 py-3 font-semibold text-blue-300">
+                  <button onClick={() => toggleSort('nome')} className="inline-flex items-center gap-1 hover:text-white transition-colors">
+                    Nome
+                    {sortBy !== 'nome' ? (
+                      <ArrowUpDown className="w-3 h-3 opacity-60" />
+                    ) : sortDir === 'asc' ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+                </th>
                 <th className="text-right px-6 py-3 font-semibold text-blue-300 w-20">Ações</th>
               </tr>
             </thead>
             <tbody className="text-sm">
-              {filteredEmpresas.map((empresa) => {
+              {sortedEmpresas.map((empresa) => {
                 const isExpanded = expandedEmpresas.has(empresa.id);
                 return (
                   <React.Fragment key={empresa.id}>
