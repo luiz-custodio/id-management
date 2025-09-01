@@ -17,6 +17,9 @@ class EmpresaOut(BaseModel):
     nome: str
     model_config = ConfigDict(from_attributes=True)
 
+class EmpresaUpdate(BaseModel):
+    nome: str
+
 # UNIDADE
 class UnidadeCreate(BaseModel):
     nome: str
@@ -28,6 +31,9 @@ class UnidadeOut(BaseModel):
     nome: str
     empresa_id: int
     model_config = ConfigDict(from_attributes=True)
+
+class UnidadeUpdate(BaseModel):
+    nome: str
 
 # ITEM
 class ItemCreate(BaseModel):

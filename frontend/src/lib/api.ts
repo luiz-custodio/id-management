@@ -154,6 +154,12 @@ export const api = {
       body: JSON.stringify({ nome, unidades }),
     });
   },
+  renomearEmpresa(empresaId: number, nome: string) {
+    return http<Empresa>(`/empresas/${empresaId}`, {
+      method: "PUT",
+      body: JSON.stringify({ nome }),
+    });
+  },
   listarUnidades(empresaId: number) {
     return http<Unidade[]>(`/unidades?empresa_id=${empresaId}`);
   },
@@ -161,6 +167,12 @@ export const api = {
     return http<Unidade>("/unidades", {
       method: "POST",
       body: JSON.stringify({ empresa_id: empresaId, nome }),
+    });
+  },
+  renomearUnidade(unidadeId: number, nome: string) {
+    return http<Unidade>(`/unidades/${unidadeId}`, {
+      method: "PUT",
+      body: JSON.stringify({ nome }),
     });
   },
   async excluirUnidade(unidadeId: number): Promise<void> {

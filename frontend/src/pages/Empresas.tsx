@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown, Edit2 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Empresa, Unidade } from '../lib/api';
 
@@ -437,6 +437,36 @@ const EmpresasPage: React.FC = () => {
       alert('Erro ao criar unidade. Tente novamente.');
     } finally {
       setCreatingUnidade(false);
+    }
+  };
+
+  // Renomear empresa
+  const handleRenameEmpresa = async (empresa: Empresa) => {
+    const atual = empresa.nome;
+    const novo = window.prompt('Novo nome da empresa:', atual)?.trim();
+    if (!novo || novo === atual) return;
+    try {
+      await api.renomearEmpresa(empresa.id, novo);
+      await fetchEmpresas();
+      if (expandedEmpresas.has(empresa.id)) {
+        await loadUnidadesEmpresa(empresa.id);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear empresa';
+      alert(msg);
+    }
+  };
+
+  // Renomear unidade
+  const handleRenameUnidade = async (unidadeId: number, nomeAtual: string, empresaId: number) => {
+    const novo = window.prompt('Novo nome da unidade:', nomeAtual)?.trim();
+    if (!novo || novo === nomeAtual) return;
+    try {
+      await api.renomearUnidade(unidadeId, novo);
+      await loadUnidadesEmpresa(empresaId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear unidade';
+      alert(msg);
     }
   };
 
@@ -1430,6 +1460,16 @@ const EmpresasPage: React.FC = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              handleRenameEmpresa(empresa);
+                            }}
+                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
+                            title="Renomear empresa"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setEmpresaToCreateUnidade({ id: empresa.id, nome: empresa.nome });
                               setShowCreateUnidadeModal(true);
                             }}
@@ -1497,6 +1537,16 @@ const EmpresasPage: React.FC = () => {
                                         Selecionada
                                       </span>
                                     )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRenameUnidade(unidade.id, unidade.nome, empresa.id);
+                                      }}
+                                      className="p-1 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
+                                      title="Renomear unidade"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
                                     {unidade.id_unidade === "001" ? (
                                       <div className="p-1 text-gray-500 cursor-not-allowed" title="Matriz não pode ser excluída">
                                         <Trash2 className="w-3 h-3 opacity-30" />

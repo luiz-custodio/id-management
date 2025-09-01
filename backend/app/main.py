@@ -444,6 +444,34 @@ def get_config():
 def listar_empresas(db: Session = Depends(get_db)):
     return db.query(models.Empresa).order_by(models.Empresa.id_empresa).all()
 
+@app.put("/empresas/{empresa_pk}", response_model=schemas.EmpresaOut)
+def renomear_empresa(empresa_pk: int, payload: schemas.EmpresaUpdate, db: Session = Depends(get_db)):
+    emp = db.get(models.Empresa, empresa_pk)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa não encontrada")
+
+    novo_nome = (payload.nome or "").strip()
+    if not novo_nome:
+        raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
+
+    if novo_nome != emp.nome:
+        old_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        new_path = BASE_CLIENTES_PATH / f"{novo_nome} - {emp.id_empresa}"
+        try:
+            BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+            # Renomeia a pasta da empresa se existir e o destino ainda não existir
+            if old_path.exists() and not new_path.exists():
+                old_path.rename(new_path)
+        except Exception as e:
+            # Não bloqueia o rename no banco; apenas loga o erro
+            print(f"Erro ao renomear pasta da empresa: {e}")
+
+        emp.nome = novo_nome
+        db.add(emp)
+        db.commit()
+        db.refresh(emp)
+    return emp
+
 @app.delete("/empresas/{empresa_pk}", status_code=204)
 def excluir_empresa(empresa_pk: int, db: Session = Depends(get_db)):
     """
@@ -580,6 +608,45 @@ def excluir_unidade(unidade_pk: int, db: Session = Depends(get_db)):
     db.delete(und)
     db.commit()
     return
+
+@app.put("/unidades/{unidade_pk}", response_model=schemas.UnidadeOut)
+def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Session = Depends(get_db)):
+    und = db.get(models.Unidade, unidade_pk)
+    if not und:
+        raise HTTPException(status_code=404, detail="Unidade não encontrada")
+
+    novo_nome = (payload.nome or "").strip()
+    if not novo_nome:
+        raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
+
+    if novo_nome != und.nome:
+        emp = db.get(models.Empresa, und.empresa_id)
+        try:
+            BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+            empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+            old_path = empresa_folder / f"{und.nome} - {und.id_unidade}"
+            new_path = empresa_folder / f"{novo_nome} - {und.id_unidade}"
+
+            if old_path.exists() and not new_path.exists():
+                old_path.rename(new_path)
+            elif (not old_path.exists()) and (not new_path.exists()):
+                # Se não existir nenhuma pasta, cria estrutura básica
+                new_path.mkdir(parents=True, exist_ok=True)
+                for subpasta in SUBPASTAS_PADRAO:
+                    sp = new_path / subpasta
+                    sp.mkdir(exist_ok=True)
+                    if subpasta.startswith("04 CCEE - DRI"):
+                        for tipo in CCEE_SUBPASTAS:
+                            (sp / tipo).mkdir(exist_ok=True)
+        except Exception as e:
+            print(f"Erro ao ajustar pastas da unidade: {e}")
+
+        und.nome = novo_nome
+        db.add(und)
+        db.commit()
+        db.refresh(und)
+
+    return und
 
 # =====================
 # ITENS
