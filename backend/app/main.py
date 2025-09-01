@@ -294,7 +294,7 @@ def validar_extensao(filename: str) -> str:
     """
     Valida e extrai a extensão do arquivo
     """
-    extensoes_permitidas = ['pdf', 'xlsx', 'xlsm', 'csv', 'docx']
+    extensoes_permitidas = ['pdf', 'xlsx', 'xlsm', 'csv', 'docx', 'xml']
     extensao = filename.split('.')[-1].lower()
     
     if extensao not in extensoes_permitidas:

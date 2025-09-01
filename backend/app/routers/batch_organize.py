@@ -63,7 +63,8 @@ def detect_file_type(filename: str) -> Optional[str]:
             return tipo
     
     # REGRA 2: Faturas - apenas data no nome (ex: "2025-08.pdf")
-    regex_data_fatura = r'^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx?|docx?)$'
+    # Permite também XML para faturas no formato AAAA-MM.xml
+    regex_data_fatura = r'^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx?|docx?|xml)$'
     if re.match(regex_data_fatura, nome, re.IGNORECASE):
         return 'FAT'
     

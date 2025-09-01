@@ -201,7 +201,9 @@ const BatchOrganize: React.FC = () => {
   // Estados de interface
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [draggedFile, setDraggedFile] = useState<UndetectedFile | null>(null);
+  const [draggedFiles, setDraggedFiles] = useState<UndetectedFile[] | null>(null);
+  const [selectedManualPaths, setSelectedManualPaths] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   
   // Estados para pesquisa
   const [searchEmpresa, setSearchEmpresa] = useState('');
@@ -223,6 +225,37 @@ const BatchOrganize: React.FC = () => {
     isOpen: false,
     results: []
   });
+
+  // Mover um arquivo detectado automaticamente para a aba Manual
+  const moveToManual = (file: DetectedFile) => {
+    // Evita duplicar se já estiver na lista manual
+    const alreadyInManual = undetectedFiles.some((f) => f.path === file.path);
+    if (alreadyInManual) return;
+
+    // Remove da lista automática
+    const remainingDetected = detectedFiles.filter((f) => f.path !== file.path);
+    setDetectedFiles(remainingDetected);
+
+    // Adiciona na lista manual (sem pasta atribuída; mantém sugestão de nome)
+    const manualItem: UndetectedFile = {
+      name: file.name,
+      path: file.path,
+      size: file.size,
+      isDetected: false,
+      assignedFolder: undefined,
+      customName: file.newName || file.name,
+    };
+    setUndetectedFiles([...undetectedFiles, manualItem]);
+
+    // Atualiza contadores das pastas (remove 1 da pasta sugerida automática)
+    const updatedFolders = folders.map((folder) => ({
+      ...folder,
+      count: folder.path === file.targetFolder ? Math.max(0, folder.count - 1) : folder.count,
+    }));
+    setFolders(updatedFolders);
+
+    toast.success(`${file.name} movido para organização manual`);
+  };
 
   // Carregar empresas
   useEffect(() => {
@@ -396,6 +429,8 @@ const BatchOrganize: React.FC = () => {
       setFiles(allFiles);
       setDetectedFiles(detected);
       setUndetectedFiles(undetected);
+      setSelectedManualPaths(new Set());
+      setLastSelectedIndex(null);
 
       // Atualizar contadores das pastas
       const updatedFolders = folders.map(folder => ({
@@ -436,45 +471,89 @@ const BatchOrganize: React.FC = () => {
       'application/vnd.ms-excel': ['.xls'],
       'text/csv': ['.csv'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/msword': ['.doc']
+      'application/msword': ['.doc'],
+      'text/xml': ['.xml'],
+      'application/xml': ['.xml']
     },
     multiple: true
   });
 
-  // Handlers para drag & drop manual
-  const handleFileDragStart = (file: UndetectedFile) => {
-    setDraggedFile(file);
+  // Handlers para seleção e drag & drop manual (multi-seleção)
+  const handleManualItemClick = (e: React.MouseEvent, file: UndetectedFile, index: number) => {
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      const [start, end] = [lastSelectedIndex, index].sort((a, b) => a - b);
+      const newSet = new Set(selectedManualPaths);
+      for (let i = start; i <= end; i++) newSet.add(undetectedFiles[i].path);
+      setSelectedManualPaths(newSet);
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      const newSet = new Set(selectedManualPaths);
+      if (newSet.has(file.path)) newSet.delete(file.path); else newSet.add(file.path);
+      setSelectedManualPaths(newSet);
+      setLastSelectedIndex(index);
+      return;
+    }
+
+    // Seleção simples
+    setSelectedManualPaths(new Set([file.path]));
+    setLastSelectedIndex(index);
+  };
+
+  const handleFileDragStart = (file: UndetectedFile, index?: number) => {
+    const selectedHasCurrent = selectedManualPaths.has(file.path);
+    let group: UndetectedFile[];
+    if (selectedManualPaths.size > 0 && selectedHasCurrent) {
+      group = undetectedFiles.filter((f) => selectedManualPaths.has(f.path));
+    } else {
+      group = [file];
+      setSelectedManualPaths(new Set([file.path]));
+      setLastSelectedIndex(index ?? null);
+    }
+    setDraggedFiles(group);
   };
 
   const handleFileDragEnd = () => {
-    setDraggedFile(null);
+    setDraggedFiles(null);
   };
 
   const handleFolderDrop = (folderId: string) => {
-    if (!draggedFile) return;
+    if (!draggedFiles || draggedFiles.length === 0) return;
 
     const folder = folders.find(f => f.id === folderId);
     if (!folder) return;
 
-    // Atualizar arquivo com pasta de destino
+    const targetPath = folder.path;
+
+    // Atualiza atribuições
+    const draggedSet = new Set(draggedFiles.map(df => df.path));
     const updatedUndetected = undetectedFiles.map(file =>
-      file.path === draggedFile.path
-        ? { ...file, assignedFolder: folder.path }
-        : file
+      draggedSet.has(file.path) ? { ...file, assignedFolder: targetPath } : file
     );
     setUndetectedFiles(updatedUndetected);
 
-    // Atualizar contador da pasta
-    const updatedFolders = folders.map(f => ({
-      ...f,
-      count: f.id === folderId 
-        ? f.count + 1 
-        : f.count - (draggedFile.assignedFolder === f.path ? 1 : 0)
-    }));
+    // Calcula variações por pasta
+    const decByFolder = new Map<string, number>();
+    let incCount = 0;
+    draggedFiles.forEach(df => {
+      if (df.assignedFolder && df.assignedFolder !== targetPath) {
+        decByFolder.set(df.assignedFolder, (decByFolder.get(df.assignedFolder) || 0) + 1);
+      }
+      if (df.assignedFolder !== targetPath) incCount += 1;
+    });
+
+    const updatedFolders = folders.map(f => {
+      let count = f.count;
+      if (f.id === folderId) count += incCount;
+      const dec = decByFolder.get(f.path) || 0;
+      if (dec) count = Math.max(0, count - dec);
+      return { ...f, count };
+    });
     setFolders(updatedFolders);
 
-    toast.success(`${draggedFile.name} movido para ${folder.name}`);
-    setDraggedFile(null);
+    toast.success(`${draggedFiles.length} arquivo(s) movido(s) para ${folder.name}`);
+    setDraggedFiles(null);
   };
 
   // Função para renomear arquivo
@@ -504,6 +583,13 @@ const BatchOrganize: React.FC = () => {
   const removeFile = (file: UndetectedFile) => {
     const updatedUndetected = undetectedFiles.filter(f => f.path !== file.path);
     setUndetectedFiles(updatedUndetected);
+
+    // Atualiza seleção, se necessário
+    if (selectedManualPaths.has(file.path)) {
+      const ns = new Set(selectedManualPaths);
+      ns.delete(file.path);
+      setSelectedManualPaths(ns);
+    }
 
     // Atualizar contador se arquivo tinha pasta atribuída
     if (file.assignedFolder) {
@@ -933,6 +1019,15 @@ const BatchOrganize: React.FC = () => {
                           <ArrowRight className="h-4 w-4" />
                           <span>{file.targetFolder}</span>
                           <Check className="h-4 w-4 text-green-400" />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => moveToManual(file)}
+                            className="ml-2 border-yellow-500/30 text-yellow-300 hover:bg-yellow-500/20"
+                          >
+                            <ChevronLeft className="h-3 w-3 mr-1" />
+                            Enviar para Manual
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -957,12 +1052,14 @@ const BatchOrganize: React.FC = () => {
                           <div
                             key={index}
                             draggable
-                            onDragStart={() => handleFileDragStart(file)}
+                            onDragStart={() => handleFileDragStart(file, index)}
                             onDragEnd={handleFileDragEnd}
+                            onClick={(e) => handleManualItemClick(e, file, index)}
                             className={`
                               flex items-center justify-between p-2 border rounded cursor-move transition-opacity
-                              ${draggedFile?.path === file.path ? 'opacity-50' : ''}
+                              ${draggedFiles?.some(df => df.path === file.path) ? 'opacity-50' : ''}
                               ${file.assignedFolder ? 'bg-blue-500/20 border-blue-500/30' : 'hover:bg-white/10 border-blue-500/20'}
+                              ${selectedManualPaths.has(file.path) ? 'ring-1 ring-blue-400' : ''}
                             `}
                           >
                             <div className="flex items-center gap-2 flex-1">
@@ -1019,7 +1116,7 @@ const BatchOrganize: React.FC = () => {
                             onDrop={() => handleFolderDrop(folder.id)}
                             className={`
                               p-3 border rounded transition-colors cursor-pointer
-                              ${draggedFile 
+                              ${draggedFiles && draggedFiles.length > 0 
                                 ? 'border-blue-400 bg-blue-500/20 hover:border-blue-300' 
                                 : 'hover:bg-white/10 border-blue-500/30'
                               }
