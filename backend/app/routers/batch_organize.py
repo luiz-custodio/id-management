@@ -268,16 +268,30 @@ async def process_files(request: BatchProcessRequest, db: Session = Depends(get_
                 continue
             
             # Criar diretório de destino se não existir
-            target_dir = os.path.dirname(operation.target_path)
-            os.makedirs(target_dir, exist_ok=True)
-            
+            target_path = Path(operation.target_path)
+            target_dir = target_path.parent
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # Resolver conflito de nome (não sobrescrever arquivos existentes)
+            final_path = target_path
+            if final_path.exists():
+                base = final_path.stem
+                ext = final_path.suffix
+                i = 1
+                while True:
+                    candidate = target_dir / f"{base}-{i}{ext}"
+                    if not candidate.exists():
+                        final_path = candidate
+                        break
+                    i += 1
+
             # Copiar arquivo
-            shutil.copy2(operation.source_path, operation.target_path)
+            shutil.copy2(operation.source_path, final_path)
             
             results.append(BatchProcessResult(
                 original_name=operation.original_name,
-                new_name=operation.new_name,
-                target_path=operation.target_path,
+                new_name=final_path.name,
+                target_path=str(final_path),
                 success=True
             ))
             successful_count += 1

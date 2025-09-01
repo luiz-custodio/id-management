@@ -843,7 +843,14 @@ async def executar_upload_auto(
             
             # Caminho completo do arquivo
             caminho_completo = pasta_destino / novo_nome
-            
+
+            # Se já existir, evita sobrescrever adicionando sufixo de horário
+            if caminho_completo.exists():
+                timestamp = datetime.now().strftime("_%H%M%S")
+                nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                caminho_completo = pasta_destino / novo_nome
+
             # Salva o arquivo
             conteudo = await file.read()
             with open(caminho_completo, "wb") as f:
