@@ -7,6 +7,9 @@ from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
 from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo
 from .organizer import preview_moves, apply_moves
+from .routers import batch_organize
+from .routers import batch_debug
+from .routers import batch_simple
 import os
 import re
 import shutil
@@ -138,6 +141,11 @@ app.add_middleware(
 
 # cria tabelas se não existirem
 Base.metadata.create_all(bind=engine)
+
+# Incluir routers
+app.include_router(batch_organize.router)  # Router original funcionando
+# app.include_router(batch_simple.router)  # Router simples funcionando
+# app.include_router(batch_debug.router)  # Router de debug
 
 # ==========================================
 # ENDPOINTS DE GERENCIAMENTO DOCKER/POSTGRES

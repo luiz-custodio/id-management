@@ -2,9 +2,11 @@ import { BrowserRouter as Router, HashRouter, Routes, Route } from 'react-router
 import { useEffect } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
-// Rotas simplificadas: apenas página de Empresas por enquanto.
+// Rotas
 import EmpresasPage from './pages/Empresas';
+import BatchOrganize from './pages/BatchOrganize';
 import TitleBar from './components/TitleBar';
+import Sidebar from './components/Sidebar';
 
 function App() {
   // Detectar se está no Electron para usar HashRouter
@@ -51,11 +53,15 @@ function App() {
     <>
       <TitleBar />
       <RouterComponent>
-        <div className={`App ${isElectron ? 'pt-8' : ''}`}>
-          <Routes>
-            <Route path="/" element={<EmpresasPage />} />
-            <Route path="/empresas" element={<EmpresasPage />} />
-          </Routes>
+        <div className={`App flex h-screen ${isElectron ? 'pt-8' : ''}`}>
+          <Sidebar />
+          <main className="flex-1 overflow-auto">
+            <Routes>
+              <Route path="/" element={<EmpresasPage />} />
+              <Route path="/empresas" element={<EmpresasPage />} />
+              <Route path="/batch-organize" element={<BatchOrganize />} />
+            </Routes>
+          </main>
         </div>
       </RouterComponent>
       <Toaster richColors position="top-right" />

@@ -64,6 +64,73 @@ export type UploadResponse = {
   message: string;
 };
 
+// Tipos para organização em lote
+export type BatchFileItem = {
+  name: string;
+  path: string;
+  size: number;
+  is_detected: boolean;
+  detected_type?: string;
+  target_folder?: string;
+  new_name?: string;
+};
+
+export type BatchAnalysisRequest = {
+  empresa_id: number;
+  unidade_id: number;
+  files: Array<{
+    name: string;
+    path: string;
+    size: number;
+  }>;
+};
+
+export type BatchAnalysisResponse = {
+  detected_files: BatchFileItem[];
+  undetected_files: BatchFileItem[];
+  empresa_info: string;
+  unidade_info: string;
+  base_path: string;
+};
+
+export type BatchProcessingOperation = {
+  original_name: string;
+  new_name: string;
+  source_path: string;
+  target_path: string;
+  folder_name: string;
+};
+
+export type BatchProcessRequest = {
+  empresa_id: number;
+  unidade_id: number;
+  operations: BatchProcessingOperation[];
+};
+
+export type BatchProcessingResult = {
+  original_name: string;
+  new_name: string;
+  target_path: string;
+  success: boolean;
+  error?: string;
+};
+
+export type BatchProcessResponse = {
+  results: BatchProcessingResult[];
+  total_files: number;
+  successful_files: number;
+  empresa_info: string;
+  unidade_info: string;
+};
+
+export type FolderStructure = {
+  id: string;
+  name: string;
+  path: string;
+  description: string;
+  types: string[];
+};
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const BASE = await apiBase();
   const r = await fetch(`${BASE}${url}`, {
@@ -320,5 +387,26 @@ export const api = {
     }
 
     return response.json();
+  },
+
+  // ==========================================
+  // APIS PARA ORGANIZAÇÃO EM LOTE
+  // ==========================================
+  async batchAnalyzeFiles(request: BatchAnalysisRequest): Promise<BatchAnalysisResponse> {
+    return http<BatchAnalysisResponse>("/batch/analyze", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+  
+  async batchProcessFiles(request: BatchProcessRequest): Promise<BatchProcessResponse> {
+    return http<BatchProcessResponse>("/batch/process", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+  
+  async batchGetFolders(): Promise<{ folders: FolderStructure[] }> {
+    return http<{ folders: FolderStructure[] }>("/batch/folders");
   }
 };
