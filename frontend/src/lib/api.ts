@@ -327,12 +327,13 @@ export const api = {
 
     return response.json();
   },
-  async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList): Promise<UploadResponse> {
+  async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList, conflictStrategy?: 'overwrite'|'version'|'skip'): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('unidade_id', unidadeId.toString());
     formData.append('tipo_arquivo', tipoArquivo);
     if (mesAno) formData.append('mes_ano', mesAno);
     if (descricao) formData.append('descricao', descricao);
+    if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
     
     for (let i = 0; i < files.length; i++) {
       formData.append('files', files[i]);
@@ -351,11 +352,12 @@ export const api = {
 
     return response.json();
   },
-  async executarUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null): Promise<UploadResponse> {
+  async executarUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null, conflictStrategy?: 'overwrite'|'version'|'skip'): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('unidade_id', unidadeId.toString());
     formData.append('modo', 'AUTO');
     if (descricao) formData.append('descricao', descricao);
+    if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
     
     // Envia arquivo e metadados de análise
     filesWithAnalysis.forEach((item, index) => {

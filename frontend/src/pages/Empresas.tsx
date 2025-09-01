@@ -730,7 +730,7 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  const executarUpload = async () => {
+  const executarUpload = async (conflictStrategy?: 'overwrite'|'version'|'skip') => {
     if (!selectedUnidade || selectedFiles.length === 0) {
       return;
     }
@@ -771,7 +771,8 @@ const EmpresasPage: React.FC = () => {
         result = await api.executarUploadAuto(
           parseInt(selectedUnidade),
           filesWithAnalysis,
-          descricao || null
+          descricao || null,
+          conflictStrategy
         );
       } else {
         // Verifica se data é obrigatória para o tipo selecionado
@@ -793,7 +794,8 @@ const EmpresasPage: React.FC = () => {
           tipoFinal, 
           mesAno || null, 
           descricao || null, 
-          fileList.files
+          fileList.files,
+          conflictStrategy
         );
       }
       
@@ -1158,7 +1160,7 @@ const EmpresasPage: React.FC = () => {
             multiple
             onChange={handleFileSelect}
             className="hidden"
-            accept=".pdf,.xlsx,.xlsm,.csv,.docx"
+            accept=".pdf,.xlsx,.xlsm,.csv,.docx,.xml"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1774,7 +1776,7 @@ const EmpresasPage: React.FC = () => {
                 <p className="text-blue-200"><strong>Arquivos:</strong> {uploadPreview.total_arquivos} total, {uploadPreview.validos} válidos</p>
               </div>
               
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-96 overflow-y-auto">
                 {uploadPreview.preview.map((item: any, index: number) => (
                   <div 
                     key={index} 
@@ -1796,6 +1798,9 @@ const EmpresasPage: React.FC = () => {
                             </p>
                             <p className="text-xs text-gray-400">
                               <span>Pasta:</span> {item.pasta_destino}
+                              {item.exists && (
+                                <span className="ml-2 text-amber-400">• já existe</span>
+                              )}
                             </p>
                           </>
                         ) : (
@@ -1804,11 +1809,11 @@ const EmpresasPage: React.FC = () => {
                           </p>
                         )}
                       </div>
-                      <div className={`w-4 h-4 rounded-full ${item.valido ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <div className={`w-4 h-4 rounded-full ${item.valido ? (item.exists ? 'bg-amber-500' : 'bg-green-500') : 'bg-red-500'}`} />
                     </div>
                   </div>
                 ))}
-              </div>
+            </div>
             </div>
             
             <div className="flex gap-3 mt-6">
@@ -1822,23 +1827,58 @@ const EmpresasPage: React.FC = () => {
                 Cancelar
               </button>
               
-              <button
-                onClick={executarUpload}
-                disabled={uploadPreview.validos === 0 || uploading}
-                className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                {uploading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
-                  </>
-                )}
-              </button>
+              {(() => {
+                const conflicts = (uploadPreview?.preview || []).filter((p: any) => p.valido && p.exists);
+                if (conflicts.length === 0) {
+                  return (
+                    <button
+                      onClick={() => executarUpload()}
+                      disabled={uploadPreview.validos === 0 || uploading}
+                      className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
+                    >
+                      {uploading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
+                        </>
+                      )}
+                    </button>
+                  );
+                }
+                return (
+                  <div className="flex-1 grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => executarUpload('overwrite')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                      title="Substitui os arquivos existentes"
+                    >
+                      Sobrescrever ({conflicts.length})
+                    </button>
+                    <button
+                      onClick={() => executarUpload('version')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                      title="Salva como nova versão (v2, v3, ...)"
+                    >
+                      Salvar como v2
+                    </button>
+                    <button
+                      onClick={() => executarUpload('skip')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
+                      title="Ignora apenas os arquivos em conflito"
+                    >
+                      Pular Conflitos
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

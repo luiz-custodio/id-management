@@ -693,7 +693,8 @@ async def preview_upload_auto(
                 "empresa": empresa.nome,
                 "unidade": unidade.nome,
                 "valido": True,
-                "erro": None
+                "erro": None,
+                "exists": caminho_completo.exists()
             })
             
         except Exception as e:
@@ -706,7 +707,8 @@ async def preview_upload_auto(
                 "empresa": empresa.nome,
                 "unidade": unidade.nome,
                 "valido": False,
-                "erro": str(e)
+                "erro": str(e),
+                "exists": False
             })
     
     return {
@@ -766,7 +768,8 @@ async def preview_upload(
                 "empresa": f"{empresa.nome} - {empresa.id_empresa}",
                 "unidade": f"{unidade.nome} - {unidade.id_unidade}",
                 "valido": True,
-                "erro": None
+                "erro": None,
+                "exists": caminho_completo.exists()
             })
             
         except Exception as e:
@@ -779,7 +782,8 @@ async def preview_upload(
                 "empresa": f"{empresa.nome} - {empresa.id_empresa}",
                 "unidade": f"{unidade.nome} - {unidade.id_unidade}",
                 "valido": False,
-                "erro": str(e)
+                "erro": str(e),
+                "exists": False
             })
     
     return {
@@ -790,12 +794,27 @@ async def preview_upload(
         "unidade_info": f"{unidade.nome} - {unidade.id_unidade}"
     }
 
+def _next_version_path(p: Path) -> Path:
+    """Gera próximo caminho com sufixo ' vN' (v2, v3, ...) sem sobrescrever."""
+    import re as _re
+    base = p.stem
+    ext = p.suffix
+    # remove sufixo existente para base
+    base_clean = _re.sub(r" v\d+$", "", base)
+    n = 2
+    while True:
+        candidate = p.with_name(f"{base_clean} v{n}{ext}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
 @app.post("/upload/executar-auto")
 async def executar_upload_auto(
     request: Request,
     unidade_id: int = Form(...),
     modo: str = Form(...),
     descricao: Optional[str] = Form(None),
+    conflict_strategy: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
@@ -844,12 +863,29 @@ async def executar_upload_auto(
             # Caminho completo do arquivo
             caminho_completo = pasta_destino / novo_nome
 
-            # Se já existir, evita sobrescrever adicionando sufixo de horário
+            # Se já existir, aplica estratégia de conflito
             if caminho_completo.exists():
-                timestamp = datetime.now().strftime("_%H%M%S")
-                nome_sem_ext = novo_nome.rsplit('.', 1)[0]
-                novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
-                caminho_completo = pasta_destino / novo_nome
+                if conflict_strategy == 'skip':
+                    resultados.append({
+                        "arquivo_original": file.filename,
+                        "novo_nome": novo_nome,
+                        "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                        "sucesso": False,
+                        "tipo": tipo_arquivo,
+                        "erro": "Conflito: arquivo já existe (skip)"
+                    })
+                    continue
+                elif conflict_strategy == 'version':
+                    caminho_completo = _next_version_path(caminho_completo)
+                    novo_nome = caminho_completo.name
+                elif conflict_strategy == 'overwrite':
+                    pass  # mantém caminho para sobrescrever
+                else:
+                    # fallback antigo: timestamp
+                    timestamp = datetime.now().strftime("_%H%M%S")
+                    nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                    novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                    caminho_completo = pasta_destino / novo_nome
 
             # Salva o arquivo
             conteudo = await file.read()
@@ -890,6 +926,7 @@ async def executar_upload(
     tipo_arquivo: str = Form(...),
     mes_ano: Optional[str] = Form(None),
     descricao: Optional[str] = Form(None),
+    conflict_strategy: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
@@ -935,11 +972,26 @@ async def executar_upload(
             
             # Verifica se arquivo já existe
             if caminho_completo.exists():
-                # Adiciona timestamp para evitar conflito
-                timestamp = datetime.now().strftime("_%H%M%S")
-                nome_sem_ext = novo_nome.rsplit('.', 1)[0]
-                novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
-                caminho_completo = pasta_destino / novo_nome
+                if conflict_strategy == 'skip':
+                    resultados.append({
+                        "arquivo_original": file.filename,
+                        "novo_nome": novo_nome,
+                        "caminho_salvo": None,
+                        "sucesso": False,
+                        "erro": "Conflito: arquivo já existe (skip)"
+                    })
+                    continue
+                elif conflict_strategy == 'version':
+                    caminho_completo = _next_version_path(caminho_completo)
+                    novo_nome = caminho_completo.name
+                elif conflict_strategy == 'overwrite':
+                    pass  # sobrescreve
+                else:
+                    # fallback antigo: timestamp
+                    timestamp = datetime.now().strftime("_%H%M%S")
+                    nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                    novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                    caminho_completo = pasta_destino / novo_nome
             
             # Salva o arquivo
             with open(caminho_completo, "wb") as buffer:
