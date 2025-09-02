@@ -81,7 +81,26 @@ const EmpresasPage: React.FC = () => {
   const [selectedUnidadeNome, setSelectedUnidadeNome] = useState<string>('');
   const [tipoArquivo, setTipoArquivo] = useState<string>('');
   const [cceeSubtipo, setCceeSubtipo] = useState<string>(''); // Novo estado para subtipo CCEE
-  const [mesAno, setMesAno] = useState<string>('');
+  // Mês/Ano com persistência na sessão (até reabrir o app)
+  const [mesAno, setMesAnoState] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('idms.mesAno') || '';
+    } catch {
+      return '';
+    }
+  });
+  const setMesAno = (value: string) => {
+    setMesAnoState(value);
+    try {
+      if (value) {
+        sessionStorage.setItem('idms.mesAno', value);
+      } else {
+        sessionStorage.removeItem('idms.mesAno');
+      }
+    } catch {
+      // Ignora erros de acesso ao sessionStorage
+    }
+  };
   const [descricao, setDescricao] = useState<string>('');
   const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
   const [autoDeteccao, setAutoDeteccao] = useState<boolean>(false);
@@ -114,9 +133,11 @@ const EmpresasPage: React.FC = () => {
     });
   };
 
-  // Função para obter mês/ano atual no formato YYYY-MM
+  // Função para obter mês/ano ANTERIOR no formato YYYY-MM
   const getCurrentMonth = () => {
     const now = new Date();
+    // Subtrai 1 mês da data atual
+    now.setMonth(now.getMonth() - 1);
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
@@ -176,15 +197,12 @@ const EmpresasPage: React.FC = () => {
     setMostrarDataOpcional(false); // Reset do campo opcional
     setArquivosAnalisados([]); // Reset da análise automática
     
-    // Se o tipo requer data e não há data definida, define para o mês atual
+    // Se o tipo requer data e não há data definida, define para o mês anterior
     const tipoSelecionado = tiposArquivo.find(t => t.value === valor);
     if (tipoSelecionado?.requireDate && !mesAno) {
       setMesAno(getCurrentMonth());
     }
-    // Se o tipo não requer data, limpa o campo
-    else if (tipoSelecionado && !tipoSelecionado.requireDate) {
-      setMesAno('');
-    }
+    // Se o tipo não requer data, mantemos o valor atual para persistir a preferência
   };
 
   // Função para lidar com mudança do checkbox de auto-detecção
@@ -195,7 +213,6 @@ const EmpresasPage: React.FC = () => {
       // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
       setTipoArquivo('');
       setCceeSubtipo('');
-      setMesAno('');
       setMostrarDataOpcional(false);
       
       // Se há arquivos, analisa automaticamente
@@ -319,10 +336,10 @@ const EmpresasPage: React.FC = () => {
         confianca = 90;
         motivo = `Relatório detectado: nome contém "relatório" e data ${matchRelatorio[0].toUpperCase()}`;
       } else {
-        // Se não encontrou data no nome, usar data atual
+        // Se não encontrou data no nome, usar mês anterior
         dataDetectada = getCurrentMonth();
         confianca = 70;
-        motivo = 'Relatório detectado: nome contém "relatório" - usando data atual';
+        motivo = 'Relatório detectado: nome contém "relatório" - usando mês anterior';
       }
     }
     
@@ -838,7 +855,7 @@ const EmpresasPage: React.FC = () => {
       setArquivosAnalisados([]);
       setTipoArquivo('');
       setCceeSubtipo('');
-      setMesAno('');
+      // Não limpa o mês para manter a escolha durante a sessão
       setDescricao('');
       setMostrarDataOpcional(false);
       setShowUploadPreview(false);
