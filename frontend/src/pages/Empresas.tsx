@@ -117,6 +117,8 @@ const EmpresasPage: React.FC = () => {
   const [uploadPreview, setUploadPreview] = useState<any>(null);
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // UI compacto: controlar exibição da lista detalhada de arquivos
+  const [mostrarListaArquivos, setMostrarListaArquivos] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Ordenação
@@ -976,42 +978,41 @@ const EmpresasPage: React.FC = () => {
         </div>
         
         {/* Área de conteúdo principal com scroll */}
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <div className="flex-none space-y-3">
           {/* Título e Unidade selecionada */}
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
             
             {/* Mostra a unidade selecionada se houver com animação */}
             {selectedUnidade && (
-              <div className="animate-fade-in-down bg-blue-800/15 border border-blue-700/30 rounded-lg p-4 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm shadow-lg shadow-blue-900/20">
-                <p className="text-xs text-blue-300 mb-2 uppercase tracking-wider font-medium">Unidade Selecionada</p>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-white">
-                    {selectedEmpresaNome}
-                  </p>
-                  <p className="text-xs text-blue-200 flex items-center gap-2">
-                    <MapPin className="w-3 h-3 text-blue-400" />
-                    {selectedUnidadeNome} 
-                    <span className="text-blue-400">• {selectedUnidade}</span>
-                  </p>
+              <div className="animate-fade-in-down bg-blue-800/10 border border-blue-700/30 rounded-md px-3 py-2 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MapPin className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                    <span className="text-xs font-medium text-blue-100 truncate">
+                      {selectedEmpresaNome} • {selectedUnidadeNome}
+                    </span>
+                    <span className="text-[10px] text-blue-400 flex-shrink-0">#{selectedUnidade}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedEmpresa('');
+                      setSelectedUnidade('');
+                      setSelectedEmpresaNome('');
+                      setSelectedUnidadeNome('');
+                    }}
+                    className="text-[11px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                    title="Limpar seleção"
+                  >
+                    <X className="w-3 h-3" />
+                    Limpar
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedEmpresa('');
-                    setSelectedUnidade('');
-                  setSelectedEmpresaNome('');
-                  setSelectedUnidadeNome('');
-                }}
-                className="mt-3 text-xs text-red-400 hover:text-red-300 transition-all duration-200 flex items-center gap-1 hover:gap-2"
-              >
-                <X className="w-3 h-3" />
-                Limpar seleção
-              </button>
-            </div>
-          )}
+              </div>
+            )}
 
           {/* Checkbox de Auto-Detecção */}
-          <div className="mb-3">
+          <div className="mb-2">
             <label className="flex items-center gap-2 cursor-pointer text-xs">
               <input 
                 type="checkbox" 
@@ -1026,17 +1027,16 @@ const EmpresasPage: React.FC = () => {
             
             {/* Regras de detecção automática (aparece quando ativada) */}
             {autoDeteccao && (
-              <div className="mt-2 ml-5 text-xs text-slate-500 leading-relaxed">
-                <div className="opacity-75">
-                  <strong className="text-slate-400">Regras de detecção:</strong><br/>
+              <details className="mt-1 ml-5 text-xs text-slate-500">
+                <summary className="cursor-pointer text-slate-400 hover:text-slate-300">Ver regras</summary>
+                <div className="mt-1 opacity-75 leading-relaxed">
                   • <span className="text-blue-400">Faturas:</span> data no nome (YYYY-MM). Ex.: 2025-08.pdf/xlsx/xlsm<br/>
-                  • <span className="text-green-400">Notas:</span> contém "nota", "CP" ou "LP" (data = modificação menos 1 mês)<br/>
+                  • <span className="text-green-400">Notas:</span> contém "nota", "CP" ou "LP" (data = modificação - 1 mês)<br/>
                   • <span className="text-amber-400">Estudos:</span> contém "estudo" (data = mês/ano da modificação)<br/>
                   • <span className="text-yellow-400">Relatórios:</span> contém "relatório" + mês abreviado, ex.: JUL-25<br/>
                   • <span className="text-cyan-400">Docs:</span> "Carta denúncia", "Contrato", "Procuração", "Aditivo" (data = mês/ano da modificação)
-                  • <span className="text-slate-400">Não identificado:</span> seleção manual necessária
                 </div>
-              </div>
+              </details>
             )}
           </div>
 
@@ -1177,14 +1177,14 @@ const EmpresasPage: React.FC = () => {
             </div>
           )}
 
-          {/* Descrição */}
+          {/* Descrição (compacta) */}
           <div>
-            <label className="block text-xs text-blue-300 mb-2 font-medium">Descrição (Opcional)</label>
-            <textarea
+            <label className="block text-xs text-blue-300 mb-1 font-medium">Descrição (Opcional)</label>
+            <input
+              type="text"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              rows={2}
-              className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 resize-none transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+              className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
               placeholder="Adicione uma descrição..."
             />
           </div>
@@ -1192,7 +1192,7 @@ const EmpresasPage: React.FC = () => {
 
         {/* Área de Drag and Drop */}
         <div
-          className={`border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 flex-1 backdrop-blur-sm ${
+          className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-300 min-h-[120px] backdrop-blur-sm ${
             dragActive 
               ? 'border-blue-500 bg-blue-600/10 scale-[1.02] shadow-lg shadow-blue-500/25' 
               : 'border-blue-800/40 hover:border-blue-700/60 bg-slate-800/25'
@@ -1202,8 +1202,8 @@ const EmpresasPage: React.FC = () => {
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          <Upload className="w-10 h-10 mx-auto mb-3 text-blue-400 transition-transform duration-300 hover:scale-110" />
-          <p className="text-sm mb-2 text-blue-100">Arraste arquivos aqui</p>
+          <Upload className="w-8 h-8 mx-auto mb-2 text-blue-400 transition-transform duration-300 hover:scale-110" />
+          <p className="text-sm mb-1 text-blue-100">Arraste arquivos aqui</p>
           <p className="text-xs text-blue-400 mb-3">ou</p>
           <input
             ref={fileInputRef}
@@ -1219,33 +1219,40 @@ const EmpresasPage: React.FC = () => {
           >
             Selecionar Arquivos
           </button>
-          <p className="text-xs text-blue-400 mt-3">PDF, XLSX, XLSM, CSV, DOCX</p>
+          <p className="text-[11px] text-blue-400 mt-2">PDF, XLSX, XLSM, CSV, DOCX</p>
         </div>
         </div>
 
-        {/* Lista de arquivos selecionados - fora da área de scroll */}
+        {/* Lista de arquivos selecionados - compacta e colapsável */}
         {selectedFiles.length > 0 && (
-          <div className="mt-4 space-y-2 animate-fade-in-down flex-shrink-0">
-            <h3 className="text-xs font-medium text-blue-300">
-              Arquivos ({selectedFiles.length})
-            </h3>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {selectedFiles.map((file, index) => (
-                <div key={index} className="flex items-center justify-between bg-slate-800/50 p-2 rounded text-xs transition-all duration-200 hover:bg-slate-800/70 backdrop-blur-sm border border-blue-800/20">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                    <span className="truncate text-blue-100">{file.name}</span>
-                  </div>
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="p-1 hover:bg-slate-600 rounded flex-shrink-0 transition-all duration-200 hover:scale-110"
-                  >
-                    <X className="w-3 h-3 text-red-400 hover:text-red-300 transition-colors duration-200" />
-                  </button>
-                </div>
-              ))}
+          <div className="mt-3 animate-fade-in-down flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-medium text-blue-300">Arquivos ({selectedFiles.length})</h3>
+              <button
+                className="text-[11px] text-blue-400 hover:text-blue-300"
+                onClick={() => setMostrarListaArquivos(v => !v)}
+              >
+                {mostrarListaArquivos ? 'Ocultar detalhes' : 'Ver detalhes'}
+              </button>
             </div>
-            
+            {mostrarListaArquivos && (
+              <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between bg-slate-800/50 p-2 rounded text-xs transition-all duration-200 hover:bg-slate-800/70 backdrop-blur-sm border border-blue-800/20">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                      <span className="truncate text-blue-100">{file.name}</span>
+                    </div>
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="p-1 hover:bg-slate-600 rounded flex-shrink-0 transition-all duration-200 hover:scale-110"
+                    >
+                      <X className="w-3 h-3 text-red-400 hover:text-red-300 transition-colors duration-200" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Análise Automática */}
             {tipoArquivo === 'AUTO' && arquivosAnalisados.length > 0 && (
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/40 rounded animate-fade-in-down">
