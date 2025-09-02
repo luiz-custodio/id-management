@@ -72,7 +72,7 @@ O **Sistema de Gerenciamento de IDs** é uma solução completa para empresas qu
 | Tipo | Formato | Exemplo |
 |------|---------|---------|
 | **FAT** | `FAT-AAAA-MM` | `FAT-2025-08.pdf` |
-| **NE** | `NE-(CP\\|LP)-AAAA-MM` | `NE-CP-2025-08.pdf` |
+| **NE** | `NE-(CP\\|LP\\|VE)-AAAA-MM` | `NE-CP-2025-08.pdf` |
 | **REL** | `REL-AAAA-MM` | `REL-2025-08.xlsx` |
 | **EST** | `EST-AAAA-MM` | `EST-2025-08.pdf` |
 | **DOC** | `DOC-<SUB>-AAAA[-MM][-extras]` | `DOC-CTR-2025-03-18.pdf` |
@@ -202,10 +202,11 @@ Exemplo: FAT-2025-08.pdf
 
 #### ⚡ NE - Notas de Energia
 ```
-Formato: NE-(CP|LP)-AAAA-MM[.extensão]
+Formato: NE-(CP|LP|VE)-AAAA-MM[.extensão]
 Exemplos: 
   - NE-CP-2025-08.pdf (Conta de Energia - Posto A4)
   - NE-LP-2025-08.pdf (Leitura e Perdas)
+  - NE-VE-2025-08.pdf (Nota de Venda)
 ```
 
 #### 📈 REL - Relatórios
@@ -253,7 +254,7 @@ Exemplos:
 ├── 📁 CEOLIN - 0001/                    # {SIGLA} - {id_empresa}
 │   ├── 📁 Matriz - 001/                 # {nome} - {id_unidade}
 │   │   ├── 📁 Faturas/                  # Arquivos FAT-*
-│   │   ├── 📁 Notas de Energia/         # Arquivos NE-* (CP e LP juntos)
+│   │   ├── 📁 Notas de Energia/         # Arquivos NE-* (CP, LP e VE juntos)
 │   │   ├── 📁 Relatórios e Resultados/ # Arquivos REL-*
 │   │   ├── 📁 Estudos e Análises/       # Arquivos EST-*
 │   │   ├── 📁 Documentos do Cliente/    # Arquivos DOC-*

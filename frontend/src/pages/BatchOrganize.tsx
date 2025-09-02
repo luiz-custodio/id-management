@@ -109,8 +109,8 @@ const FOLDER_STRUCTURE: FolderTarget[] = [
     id: 'notas-energia',
     name: '03 Notas de Energia',
     path: '03 Notas de Energia',
-    description: 'NE-CP e NE-LP',
-    types: ['NE-CP', 'NE-LP'],
+    description: 'NE-CP, NE-LP e NE-VE',
+    types: ['NE-CP', 'NE-LP', 'NE-VE'],
     count: 0
   },
   {

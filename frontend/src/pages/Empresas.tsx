@@ -127,6 +127,7 @@ const EmpresasPage: React.FC = () => {
     { value: 'FAT', label: 'Fatura', requireDate: true },
     { value: 'NE-CP', label: 'Nota de Energia - CP', requireDate: true },
     { value: 'NE-LP', label: 'Nota de Energia - LP', requireDate: true },
+    { value: 'NE-VE', label: 'Nota de Energia - Venda', requireDate: true },
     { value: 'REL', label: 'Relatório', requireDate: true },
     { value: 'RES', label: 'Resumo', requireDate: true },
     { value: 'EST', label: 'Estudo', requireDate: false },
@@ -227,14 +228,17 @@ const EmpresasPage: React.FC = () => {
       motivo = `Fatura detectada: nome contém apenas data (${dataDetectada})`;
     }
     
-    // REGRA 2: Notas de Energia - contém "nota", "cp" ou "lp"
-    else if (nome.includes('nota') || nome.includes('cp') || nome.includes('lp')) {
+    // REGRA 2: Notas de Energia - contém "nota", "cp", "lp", "ve" ou "venda"
+    else if (nome.includes('nota') || nome.includes('cp') || nome.includes('lp') || nome.includes('ve') || nomeNorm.includes('venda')) {
       if (nome.includes('cp')) {
         tipoDetectado = 'NE-CP';
         motivo = 'Nota de Energia CP detectada: nome contém "CP"';
       } else if (nome.includes('lp')) {
         tipoDetectado = 'NE-LP';
         motivo = 'Nota de Energia LP detectada: nome contém "LP"';
+      } else if (nomeNorm.includes('venda') || /\bve\b/.test(nome)) {
+        tipoDetectado = 'NE-VE';
+        motivo = 'Nota de Energia Venda detectada: nome contém "venda"/"VE"';
       } else {
         tipoDetectado = 'NE-CP'; // Padrão se só tem "nota"
         motivo = 'Nota de Energia detectada: nome contém "nota"';

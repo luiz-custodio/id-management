@@ -5,7 +5,7 @@ from . import models
 
 # REGEX
 RE_FAT = re.compile(r"^FAT-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
-RE_NE  = re.compile(r"^NE-(CP|LP)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
+RE_NE  = re.compile(r"^NE-(CP|LP|VE)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
 RE_REL = re.compile(r"^REL-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
 RE_EST = re.compile(r"^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
 RE_DOC = re.compile(r"^DOC-[A-Z]{3}-.+\.(pdf|docx|xlsx)$", re.IGNORECASE)
@@ -35,12 +35,13 @@ def next_id_unidade(db: Session, empresa_id: int) -> str:
 
 def build_item_id(tipo: str, ano_mes: str | None) -> str:
     t = tipo.upper()
-    base_tags = {"FAT", "REL", "EST", "NE-CP", "NE-LP"}
+    base_tags = {"FAT", "REL", "EST", "NE-CP", "NE-LP", "NE-VE"}
     if t in base_tags:
         if not ano_mes:
             raise ValueError(f"Para tipo {tipo}, 'ano_mes' (YYYY-MM) é obrigatório.")
         if t == "NE-CP": return f"NE-CP-{ano_mes}"
         if t == "NE-LP": return f"NE-LP-{ano_mes}"
+        if t == "NE-VE": return f"NE-VE-{ano_mes}"
         return f"{t}-{ano_mes}"
     if t.startswith("DOC-"):
         return f"{t}-{ano_mes}" if ano_mes else t

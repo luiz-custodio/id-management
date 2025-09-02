@@ -56,7 +56,7 @@ def subpasta_por_tipo(tipo: str, ccee_cod: str | None = None) -> str:
     t = tipo.upper()
     if t == "FAT":
         return "02 Faturas"
-    if t in {"NE-CP", "NE-LP"}:
+    if t in {"NE-CP", "NE-LP", "NE-VE"}:
         return "03 Notas de Energia"
     if t == "REL":
         return "01 Relatórios e Resultados"

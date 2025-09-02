@@ -111,7 +111,8 @@ TIPO_PARA_PASTA = {
     # Referência (a resolução real usa fs_utils.subpasta_por_tipo)
     "FAT": "02 Faturas",
     "NE-CP": "03 Notas de Energia",
-    "NE-LP": "03 Notas de Energia", 
+    "NE-LP": "03 Notas de Energia",
+    "NE-VE": "03 Notas de Energia",
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
@@ -242,7 +243,7 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
     agora = datetime.now()
     
     # Para tipos que requerem data
-    if tipo in ["FAT", "NE-CP", "NE-LP", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
+    if tipo in ["FAT", "NE-CP", "NE-LP", "NE-VE", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
         if not ano_mes:
             # Se não fornecido, usa o mês atual
             ano_mes = agora.strftime("%Y-%m")
@@ -317,7 +318,7 @@ def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
     Fallback simples de detecção de tipo/data no backend quando não vier do cliente.
     Regras (espelhadas do frontend, com limitações por não ter lastModified real):
       - FAT: nome 'YYYY-MM.ext' → data do nome
-      - NE-CP/NE-LP: contém 'nota'/'cp'/'lp' → data = mês anterior (aproximação)
+      - NE-CP/NE-LP/NE-VE: contém 'nota'/'cp'/'lp'/'ve'/'venda' → data = mês anterior (aproximação)
       - EST: contém 'estudo' → data = mês atual
       - REL: contém 'relatorio|relatório' + 'MMM-YY' → converte
     """
@@ -335,9 +336,16 @@ def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
         ano_mes = f"{m.group(1)}-{m.group(2)}"
         return ("FAT", ano_mes, f"Detectado FAT pelo nome: {ano_mes}")
 
-    # Notas – 'nota'/'cp'/'lp' → mês anterior
-    if ("nota" in nome) or ("cp" in nome) or ("lp" in nome):
-        tipo = "NE-CP" if "cp" in nome else ("NE-LP" if "lp" in nome else "NE-CP")
+    # Notas – 'nota'/'cp'/'lp'/'ve'/'venda' → mês anterior
+    if ("nota" in nome) or ("cp" in nome) or ("lp" in nome) or ("ve" in nome) or ("venda" in nome_norm):
+        if "cp" in nome:
+            tipo = "NE-CP"
+        elif "lp" in nome:
+            tipo = "NE-LP"
+        elif "venda" in nome_norm or re.search(r"\bve\b", nome):
+            tipo = "NE-VE"
+        else:
+            tipo = "NE-CP"
         ano_mes = _prev_month_str(datetime.now())
         return (tipo, ano_mes, f"Detectado {tipo} por palavra-chave; usando mês anterior: {ano_mes}")
 

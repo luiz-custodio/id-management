@@ -22,6 +22,7 @@ DETECTION_PATTERNS = {
     "FAT": r"^FAT-\d{4}-(0[1-9]|1[0-2])",
     "NE-CP": r"^NE-CP-\d{4}-(0[1-9]|1[0-2])",
     "NE-LP": r"^NE-LP-\d{4}-(0[1-9]|1[0-2])",
+    "NE-VE": r"^NE-VE-\d{4}-(0[1-9]|1[0-2])",
     "REL": r"^REL-\d{4}-(0[1-9]|1[0-2])",
     "RES": r"^RES-\d{4}-(0[1-9]|1[0-2])",
     "EST": r"^EST-\d{4}-(0[1-9]|1[0-2])",
@@ -35,6 +36,7 @@ TYPE_TO_FOLDER = {
     "FAT": "02 Faturas",
     "NE-CP": "03 Notas de Energia",
     "NE-LP": "03 Notas de Energia",
+    "NE-VE": "03 Notas de Energia",
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
@@ -68,12 +70,14 @@ def detect_file_type(filename: str) -> Optional[str]:
     if re.match(regex_data_fatura, nome, re.IGNORECASE):
         return 'FAT'
     
-    # REGRA 3: Notas de Energia - contém "nota", "cp" ou "lp"
-    elif 'nota' in nome or 'cp' in nome or 'lp' in nome:
+    # REGRA 3: Notas de Energia - contém "nota", "cp", "lp", "ve" ou "venda"
+    elif 'nota' in nome or 'cp' in nome or 'lp' in nome or 've' in nome or 'venda' in nome_norm:
         if 'cp' in nome:
             return 'NE-CP'
         elif 'lp' in nome:
             return 'NE-LP'
+        elif 'venda' in nome_norm or re.search(r"\bve\b", nome):
+            return 'NE-VE'
         else:
             return 'NE-CP'  # Padrão se só tem "nota"
     
@@ -335,8 +339,8 @@ async def get_folder_structure():
             "id": "notas-energia",
             "name": "03 Notas de Energia",
             "path": "03 Notas de Energia",
-            "description": "NE-CP e NE-LP",
-            "types": ["NE-CP", "NE-LP"]
+            "description": "NE-CP, NE-LP e NE-VE",
+            "types": ["NE-CP", "NE-LP", "NE-VE"]
         },
         {
             "id": "ccee-dri",
