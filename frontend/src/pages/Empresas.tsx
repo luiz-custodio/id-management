@@ -978,7 +978,7 @@ const EmpresasPage: React.FC = () => {
         </div>
         
         {/* Área de conteúdo principal com scroll */}
-        <div className="flex-none space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-3">
           {/* Título e Unidade selecionada */}
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
