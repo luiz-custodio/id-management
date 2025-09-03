@@ -109,8 +109,8 @@ const FOLDER_STRUCTURE: FolderTarget[] = [
     id: 'notas-energia',
     name: '03 Notas de Energia',
     path: '03 Notas de Energia',
-    description: 'NE-CP, NE-LP e NE-VE',
-    types: ['NE-CP', 'NE-LP', 'NE-VE'],
+    description: 'NE-CP, NE-LP, NE-CPC, NE-LPC e NE-VE',
+    types: ['NE-CP', 'NE-LP', 'NE-CPC', 'NE-LPC', 'NE-VE'],
     count: 0
   },
   {
@@ -173,8 +173,8 @@ const FOLDER_STRUCTURE: FolderTarget[] = [
     id: 'icms',
     name: '11 ICMS',
     path: '11 ICMS',
-    description: 'Documentos de ICMS',
-    types: [],
+    description: 'DEVEC, LDO',
+    types: ['DEVEC', 'LDO'],
     count: 0
   },
   {

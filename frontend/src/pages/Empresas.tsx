@@ -150,10 +150,14 @@ const EmpresasPage: React.FC = () => {
     { value: 'FAT', label: 'Fatura', requireDate: true },
     { value: 'NE-CP', label: 'Nota de Energia - CP', requireDate: true },
     { value: 'NE-LP', label: 'Nota de Energia - LP', requireDate: true },
+    { value: 'NE-CPC', label: 'Nota de Energia - CPC', requireDate: true },
+    { value: 'NE-LPC', label: 'Nota de Energia - LPC', requireDate: true },
     { value: 'NE-VE', label: 'Nota de Energia - Venda', requireDate: true },
     { value: 'REL', label: 'Relatório', requireDate: true },
     { value: 'RES', label: 'Resumo', requireDate: true },
     { value: 'EST', label: 'Estudo', requireDate: false },
+    { value: 'DEVEC', label: 'ICMS - DEVEC', requireDate: true },
+    { value: 'LDO', label: 'ICMS - LDO', requireDate: true },
     { value: 'DOC-CTR', label: 'Documento - Contrato', requireDate: false },
     { value: 'DOC-ADT', label: 'Documento - Aditivo', requireDate: false },
     { value: 'DOC-CAD', label: 'Documento - Cadastro', requireDate: false },
@@ -248,8 +252,14 @@ const EmpresasPage: React.FC = () => {
     }
     
     // REGRA 2: Notas de Energia - contém "nota", "cp", "lp", "ve" ou "venda"
-    else if (nome.includes('nota') || nome.includes('cp') || nome.includes('lp') || nome.includes('ve') || nomeNorm.includes('venda')) {
-      if (nome.includes('cp')) {
+    else if (nome.includes('nota') || nome.includes('cpc') || nome.includes('lpc') || nome.includes('cp') || nome.includes('lp') || nome.includes('ve') || nomeNorm.includes('venda')) {
+      if (nome.includes('cpc')) {
+        tipoDetectado = 'NE-CPC';
+        motivo = 'Nota de Energia CPC detectada: nome contém "CPC"';
+      } else if (nome.includes('lpc')) {
+        tipoDetectado = 'NE-LPC';
+        motivo = 'Nota de Energia LPC detectada: nome contém "LPC"';
+      } else if (nome.includes('cp')) {
         tipoDetectado = 'NE-CP';
         motivo = 'Nota de Energia CP detectada: nome contém "CP"';
       } else if (nome.includes('lp')) {
@@ -271,6 +281,22 @@ const EmpresasPage: React.FC = () => {
       dataDetectada = `${ano}-${mes}`;
       confianca = 85;
       motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
+    }
+    
+    // NOVA REGRA: DEVEC e LDO (ICMS) – contém 'devec' ou 'ldo' no nome → usar data de modificação
+    else if (nome.includes('devec') || nome.includes('ldo')) {
+      const dataMod = new Date(file.lastModified);
+      const ano = dataMod.getFullYear();
+      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
+      dataDetectada = `${ano}-${mes}`;
+      confianca = 85;
+      if (nome.includes('devec')) {
+        tipoDetectado = 'DEVEC';
+        motivo = 'ICMS: DEVEC detectado no nome';
+      } else {
+        tipoDetectado = 'LDO';
+        motivo = 'ICMS: LDO detectado no nome';
+      }
     }
     
     // REGRA 3: Estudo - contém "estudo" no nome → usa data de modificação

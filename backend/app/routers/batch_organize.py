@@ -23,6 +23,10 @@ DETECTION_PATTERNS = {
     "NE-CP": r"^NE-CP-\d{4}-(0[1-9]|1[0-2])",
     "NE-LP": r"^NE-LP-\d{4}-(0[1-9]|1[0-2])",
     "NE-VE": r"^NE-VE-\d{4}-(0[1-9]|1[0-2])",
+    "NE-CPC": r"^NE-CPC-\d{4}-(0[1-9]|1[0-2])",
+    "NE-LPC": r"^NE-LPC-\d{4}-(0[1-9]|1[0-2])",
+    "DEVEC": r"^DEVEC-\d{4}-(0[1-9]|1[0-2])",
+    "LDO": r"^LDO-\d{4}-(0[1-9]|1[0-2])",
     "REL": r"^REL-\d{4}-(0[1-9]|1[0-2])",
     "RES": r"^RES-\d{4}-(0[1-9]|1[0-2])",
     "EST": r"^EST-\d{4}-(0[1-9]|1[0-2])",
@@ -37,6 +41,10 @@ TYPE_TO_FOLDER = {
     "NE-CP": "03 Notas de Energia",
     "NE-LP": "03 Notas de Energia",
     "NE-VE": "03 Notas de Energia",
+    "NE-CPC": "03 Notas de Energia",
+    "NE-LPC": "03 Notas de Energia",
+    "DEVEC": "11 ICMS",
+    "LDO": "11 ICMS",
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
@@ -70,9 +78,13 @@ def detect_file_type(filename: str) -> Optional[str]:
     if re.match(regex_data_fatura, nome, re.IGNORECASE):
         return 'FAT'
     
-    # REGRA 3: Notas de Energia - contém "nota", "cp", "lp", "ve" ou "venda"
-    elif 'nota' in nome or 'cp' in nome or 'lp' in nome or 've' in nome or 'venda' in nome_norm:
-        if 'cp' in nome:
+    # REGRA 3: Notas de Energia - contém "nota", "cp", "lp", "ve", "cpc", "lpc" ou "venda"
+    elif 'nota' in nome or 'cpc' in nome or 'lpc' in nome or 'cp' in nome or 'lp' in nome or 've' in nome or 'venda' in nome_norm:
+        if 'cpc' in nome:
+            return 'NE-CPC'
+        elif 'lpc' in nome:
+            return 'NE-LPC'
+        elif 'cp' in nome:
             return 'NE-CP'
         elif 'lp' in nome:
             return 'NE-LP'
@@ -81,11 +93,17 @@ def detect_file_type(filename: str) -> Optional[str]:
         else:
             return 'NE-CP'  # Padrão se só tem "nota"
     
-    # REGRA 4: Estudo - contém "estudo" no nome
+    # REGRA 4: ICMS - DEVEC/LDO
+    elif 'devec' in nome:
+        return 'DEVEC'
+    elif 'ldo' in nome:
+        return 'LDO'
+    
+    # REGRA 5: Estudo - contém "estudo" no nome
     elif 'estudo' in nome:
         return 'EST'
     
-    # REGRA 5: Documentos específicos
+    # REGRA 6: Documentos específicos
     elif ((nome.find('carta') != -1 and (nome.find('denúncia') != -1 or nome_norm.find('denuncia') != -1)) or
           nome.find('aditivo') != -1 or
           nome.find('contrato') != -1 or
@@ -100,11 +118,11 @@ def detect_file_type(filename: str) -> Optional[str]:
         elif nome.find('procuração') != -1 or nome_norm.find('procuracao') != -1:
             return 'DOC-PRO'
     
-    # REGRA 6: Relatórios - contém "relatório"
+    # REGRA 7: Relatórios - contém "relatório"
     elif 'relatorio' in nome or 'relatório' in nome:
         return 'REL'
     
-    # REGRA 7: CCEE BOLETOCA - contém "boleto"
+    # REGRA 8: CCEE BOLETOCA - contém "boleto"
     elif 'boleto' in nome:
         return 'CCEE-BOLETOCA'
     
@@ -339,8 +357,8 @@ async def get_folder_structure():
             "id": "notas-energia",
             "name": "03 Notas de Energia",
             "path": "03 Notas de Energia",
-            "description": "NE-CP, NE-LP e NE-VE",
-            "types": ["NE-CP", "NE-LP", "NE-VE"]
+            "description": "NE-CP, NE-LP, NE-CPC, NE-LPC e NE-VE",
+            "types": ["NE-CP", "NE-LP", "NE-CPC", "NE-LPC", "NE-VE"]
         },
         {
             "id": "ccee-dri",
@@ -395,8 +413,8 @@ async def get_folder_structure():
             "id": "icms",
             "name": "11 ICMS",
             "path": "11 ICMS",
-            "description": "Documentos de ICMS",
-            "types": []
+            "description": "DEVEC e LDO",
+            "types": ["DEVEC", "LDO"]
         },
         {
             "id": "estudos",

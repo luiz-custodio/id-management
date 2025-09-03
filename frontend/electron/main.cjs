@@ -28,7 +28,7 @@ const DEFAULT_SERVER_CONFIG = {
 // Tamanhos predefinidos da janela
 const WINDOW_SIZES = {
   small: { width: 900, height: 600, name: 'Pequeno' },
-  medium: { width: 1057, height: 593, name: 'Médio' },
+  medium: { width: 1057, height: 600, name: 'Médio' },
   large: { width: 1400, height: 900, name: 'Grande' }
 };
 

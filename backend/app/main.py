@@ -113,6 +113,10 @@ TIPO_PARA_PASTA = {
     "NE-CP": "03 Notas de Energia",
     "NE-LP": "03 Notas de Energia",
     "NE-VE": "03 Notas de Energia",
+    "NE-CPC": "03 Notas de Energia",
+    "NE-LPC": "03 Notas de Energia",
+    "DEVEC": "11 ICMS",
+    "LDO": "11 ICMS",
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
@@ -243,7 +247,7 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
     agora = datetime.now()
     
     # Para tipos que requerem data
-    if tipo in ["FAT", "NE-CP", "NE-LP", "NE-VE", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
+    if tipo in ["FAT", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC", "DEVEC", "LDO", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
         if not ano_mes:
             # Se não fornecido, usa o mês atual
             ano_mes = agora.strftime("%Y-%m")
@@ -336,9 +340,13 @@ def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
         ano_mes = f"{m.group(1)}-{m.group(2)}"
         return ("FAT", ano_mes, f"Detectado FAT pelo nome: {ano_mes}")
 
-    # Notas – 'nota'/'cp'/'lp'/'ve'/'venda' → mês anterior
-    if ("nota" in nome) or ("cp" in nome) or ("lp" in nome) or ("ve" in nome) or ("venda" in nome_norm):
-        if "cp" in nome:
+    # Notas – 'nota'/'cpc'/'lpc'/'cp'/'lp'/'ve'/'venda' → mês anterior
+    if ("nota" in nome) or ("cpc" in nome) or ("lpc" in nome) or ("cp" in nome) or ("lp" in nome) or ("ve" in nome) or ("venda" in nome_norm):
+        if "cpc" in nome:
+            tipo = "NE-CPC"
+        elif "lpc" in nome:
+            tipo = "NE-LPC"
+        elif "cp" in nome:
             tipo = "NE-CP"
         elif "lp" in nome:
             tipo = "NE-LP"
@@ -348,6 +356,14 @@ def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
             tipo = "NE-CP"
         ano_mes = _prev_month_str(datetime.now())
         return (tipo, ano_mes, f"Detectado {tipo} por palavra-chave; usando mês anterior: {ano_mes}")
+
+    # ICMS – DEVEC/LDO → usa mês atual como aproximação
+    if "devec" in nome:
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("DEVEC", ano_mes, "Detectado DEVEC; usando mês atual")
+    if "ldo" in nome:
+        ano_mes = datetime.now().strftime("%Y-%m")
+        return ("LDO", ano_mes, "Detectado LDO; usando mês atual")
 
     # Estudo – contém 'estudo'
     if "estudo" in nome or "estudos" in nome:

@@ -29,14 +29,18 @@
 
   <h2>2) Regras comuns</h2>
   <ul>
+  <li>Arquivos de ICMS (DEVEC, LDO) ficam na pasta <strong>11 ICMS/</strong>.</li>
     <li>Pastas de Empresa/Unidade: “{SIGLA} - {id_empresa} / {NOME} - {id_unidade}” (ex.: CEOLIN - 0001 / Matriz - 001).</li>
-    <li>Notas de Energia (NE-CP / NE-LP / NE-VE): ficam na <strong>MESMA</strong> pasta “Notas de Energia/”.</li>
+    <li>Notas de Energia (NE-CP, NE-LP, NE-CPC, NE-LPC, NE-VE): ficam na <strong>MESMA</strong> pasta “Notas de Energia/”.</li>
     <li>CCEE: cada tipo/subcódigo (ex.: CFZ003) tem sua própria pasta dentro de “CCEE - DRI/”.</li>
   </ul>
   <p><strong>Exemplos de caminhos:</strong></p>
   <pre><code>/dados/empresas/CEOLIN - 0001/Matriz - 001/
   Faturas/FAT-2025-01.pdf
   Notas de Energia/NE-CP-2025-02.pdf
+  Notas de Energia/NE-LPC-2025-02.pdf
+  11 ICMS/DEVEC-2025-06.pdf
+  11 ICMS/LDO-2025-06.pdf
   BM Energia/DOC-CTR-2025.pdf
   BM Energia/MIN-CTR-2025 - Preço Fixo.docx
   CCEE - DRI/CFZ003/CCEE-CFZ003-2025-04.pdf</code></pre>
@@ -56,6 +60,8 @@
       <tr><td><strong>FAT</strong></td><td>Fatura mensal</td><td><code>FAT-AAAA-MM</code></td><td>Faturas/</td><td><code>FAT-2025-01.pdf</code></td></tr>
       <tr><td><strong>NE-CP</strong></td><td>Nota de Energia (Curto Prazo)</td><td><code>NE-CP-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-CP-2025-02.pdf</code></td></tr>
       <tr><td><strong>NE-LP</strong></td><td>Nota de Energia (Longo Prazo)</td><td><code>NE-LP-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-LP-2025-02.pdf</code></td></tr>
+<tr><td><strong>NE-CPC</strong></td><td>Nota de Energia (Curto Prazo Complementar)</td><td><code>NE-CPC-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-CPC-2025-02.pdf</code></td></tr>
+<tr><td><strong>NE-LPC</strong></td><td>Nota de Energia (Longo Prazo Complementar)</td><td><code>NE-LPC-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-LPC-2025-02.pdf</code></td></tr>
 <tr><td><strong>NE-VE</strong></td><td>Nota de Venda</td><td><code>NE-VE-AAAA-MM</code></td><td>Notas de Energia/</td><td><code>NE-VE-2025-02.pdf</code></td></tr>
       <tr><td><strong>REL</strong></td><td>Relatório</td><td><code>REL-AAAA-MM</code></td><td>Relatórios e Resultados/</td><td><code>REL-2025-01.pdf</code></td></tr>
       <tr><td><strong>RES</strong></td><td>Resumo</td><td><code>RES-AAAA-MM</code></td><td>Relatórios e Resultados/</td><td><code>RES-2025-01.pdf</code></td></tr>
@@ -63,7 +69,9 @@
       <tr><td><strong>DOC-&lt;SUB&gt;</strong></td><td>Documentos do Cliente / BM Energia</td><td>ver subtipos abaixo</td><td>BM Energia/</td><td><code>DOC-CTR-2025.pdf</code>; <code>DOC-PRO-2025-V2.pdf</code></td></tr>
       <tr><td><strong>MIN-&lt;SUB&gt;</strong></td><td>Minutas (Contratos, Procurações, Cartas, etc.)</td><td>ver subtipos abaixo</td><td>BM Energia/</td><td><code>MIN-CTR-2025 - Preço Fixo.docx</code>; <code>MIN-PRO-2025.docx</code></td></tr>
       <tr><td><strong>CCEE-&lt;COD&gt;</strong></td><td>Relatórios CCEE (com ou sem subcódigo)</td><td><code>CCEE-&lt;COD&gt;-AAAA-MM[-Vn][-X]</code></td><td>CCEE - DRI/&lt;COD&gt;/</td><td><code>CCEE-CFZ003-2025-04.pdf</code></td></tr>
-    </tbody>
+    <tr><td><strong>DEVEC</strong></td><td>Devolução/Crédito de ICMS (Estadual)</td><td><code>DEVEC-AAAA-MM</code></td><td>11 ICMS/</td><td><code>DEVEC-2025-06.pdf</code></td></tr>
+<tr><td><strong>LDO</strong></td><td>Laudo (ICMS)</td><td><code>LDO-AAAA-MM</code></td><td>11 ICMS/</td><td><code>LDO-2025-06.pdf</code></td></tr>
+</tbody>
   </table>
 
   <h2>4) Subtipos de DOC e MIN</h2>
@@ -77,7 +85,9 @@
       <tr><td><strong>CAR</strong></td><td>Carta Denúncia</td><td><code>DOC-CAR-AAAA</code> / <code>MIN-CAR-AAAA</code></td><td><code>DOC-CAR-2025.pdf</code>; <code>MIN-CAR-2025.docx</code></td></tr>
       <tr><td><strong>COM</strong></td><td>Comunicado/Ofício</td><td><code>DOC-COM-AAAA-MM[-NNN]</code></td><td><code>DOC-COM-2025-08-001.pdf</code></td></tr>
       <tr><td><strong>LIC</strong></td><td>Licença/Autorização</td><td><code>DOC-LIC-AAAA[-MM[-DD]]</code></td><td><code>DOC-LIC-2025-06.pdf</code></td></tr>
-    </tbody>
+    <tr><td><strong>DEVEC</strong></td><td>Devolução/Crédito de ICMS (Estadual)</td><td><code>DEVEC-AAAA-MM</code></td><td>11 ICMS/</td><td><code>DEVEC-2025-06.pdf</code></td></tr>
+<tr><td><strong>LDO</strong></td><td>Laudo (ICMS)</td><td><code>LDO-AAAA-MM</code></td><td>11 ICMS/</td><td><code>LDO-2025-06.pdf</code></td></tr>
+</tbody>
   </table>
   <div class="note">Regras rápidas (DOC/MIN): jurídico → prefira data completa; vários no mês → -001, -002; revisões → -V1, -V2.</div>
 
@@ -100,7 +110,9 @@ CCEE - DRI/ND/CCEE-ND-2025-04.pdf</code></pre>
   <h2>6) Regex de validação (opcional)</h2>
   <p>Use estas expressões para validar nomes (aceitam extensões comuns e, quando indicado, sufixo humano).</p>
   <pre><code>FAT  : ^FAT-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
-NE   : ^NE-(CP|LP|VE)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
+NE   : ^NE-(CP|LP|CPC|LPC|VE)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
+DEVEC: ^DEVEC-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
+LDO  : ^LDO-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 REL  : ^REL-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 RES  : ^RES-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 EST  : ^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
@@ -121,14 +133,16 @@ CCEE : ^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{
       <tr><td><strong>SUM</strong></td><td>Sumários/Resumo</td><td>Consolidações mensais.</td></tr>
       <tr><td><strong>BOLETOCA</strong></td><td>Boleto – Categoria CA</td><td>Não possui numeração de 3 dígitos. Pasta única “BOLETOCA/”.</td></tr>
       <tr><td><strong>ND</strong></td><td>Nota de Débito</td><td>Não possui numeração de 3 dígitos. Pasta única “ND/”.</td></tr>
-    </tbody>
+    <tr><td><strong>DEVEC</strong></td><td>Devolução/Crédito de ICMS (Estadual)</td><td><code>DEVEC-AAAA-MM</code></td><td>11 ICMS/</td><td><code>DEVEC-2025-06.pdf</code></td></tr>
+<tr><td><strong>LDO</strong></td><td>Laudo (ICMS)</td><td><code>LDO-AAAA-MM</code></td><td>11 ICMS/</td><td><code>LDO-2025-06.pdf</code></td></tr>
+</tbody>
   </table>
 
   <h2>8) Boas práticas</h2>
   <ul>
     <li>Arquivos sempre começam pela TAG.</li>
     <li>Pastas de Empresa/Unidade: “Nome - ID”.</li>
-    <li>NE-CP, NE-LP e NE-VE juntos em “Notas de Energia/”.</li>
+    <li>NE-CP, NE-LP, NE-CPC, NE-LPC e NE-VE juntos em “Notas de Energia/”.</li>
     <li>CCEE: uma pasta por tipo/subcódigo (ex.: CFZ003/).</li>
     <li>Para DOC/MIN jurídico, use data completa no ID.</li>
     <li>Revisões: use -Vn; múltiplos no mês: -NNN.</li>
