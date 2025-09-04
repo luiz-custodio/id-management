@@ -325,21 +325,15 @@ const BatchOrganize: React.FC = () => {
         console.log('✅ Usando filtragem por PATH (webkitRelativePath disponível)');
         filteredFileList = fileList.filter(file => {
           const path = file.webkitRelativePath || file.name;
-          const pathLower = path.toLowerCase();
           const pathNorm = path.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-          
-          const shouldIgnore = (
-            pathLower.includes('6_relatórios') ||
-            pathLower.includes('6 relatórios') ||
-            pathNorm.includes('6_relatorios') ||
-            pathNorm.includes('6 relatorios')
-          );
-          
-          if (shouldIgnore) {
+          // Regex robusta para 6_RELATÓRIOS e variações: (^|/|\)0*6[_ -]*relatorios(/|\|$)
+          const relatoriosRe = /(^|[\\/])0*6[\s_-]*relatorios([\\/]|$)/i;
+
+          if (relatoriosRe.test(pathNorm)) {
             console.log('🚫 IGNORANDO (path):', file.name, 'path:', path);
             return false;
           }
-          
+
           console.log('✅ ACEITO (path):', file.name, 'path:', path);
           return true;
         });

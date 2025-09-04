@@ -236,6 +236,8 @@ const EmpresasPage: React.FC = () => {
   const analisarArquivoAutomaticamente = (file: File) => {
     const nome = file.name.toLowerCase();
     const nomeNorm = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tokens = (nomeNorm.match(/[a-z0-9]+/g) || []);
+    const tset = new Set(tokens);
     let tipoDetectado = '';
     let dataDetectada = '';
     let confianca = 0;
@@ -251,26 +253,26 @@ const EmpresasPage: React.FC = () => {
       motivo = `Fatura detectada: nome contém apenas data (${dataDetectada})`;
     }
     
-    // REGRA 2: Notas de Energia - contém "nota", "cp", "lp", "ve" ou "venda"
-    else if (nome.includes('nota') || nome.includes('cpc') || nome.includes('lpc') || nome.includes('cp') || nome.includes('lp') || nome.includes('ve') || nomeNorm.includes('venda')) {
-      if (nome.includes('cpc')) {
+    // REGRA 2: Notas de Energia - tokens (evita falsos positivos)
+    else if (tset.has('nota') || tset.has('cpc') || tset.has('lpc') || tset.has('cp') || tset.has('lp') || tset.has('venda') || tset.has('ve')) {
+      if (tset.has('cpc')) {
         tipoDetectado = 'NE-CPC';
-        motivo = 'Nota de Energia CPC detectada: nome contém "CPC"';
-      } else if (nome.includes('lpc')) {
+        motivo = 'Nota de Energia CPC: token "cpc"';
+      } else if (tset.has('lpc')) {
         tipoDetectado = 'NE-LPC';
-        motivo = 'Nota de Energia LPC detectada: nome contém "LPC"';
-      } else if (nome.includes('cp')) {
+        motivo = 'Nota de Energia LPC: token "lpc"';
+      } else if (tset.has('cp')) {
         tipoDetectado = 'NE-CP';
-        motivo = 'Nota de Energia CP detectada: nome contém "CP"';
-      } else if (nome.includes('lp')) {
+        motivo = 'Nota de Energia CP: token "cp"';
+      } else if (tset.has('lp')) {
         tipoDetectado = 'NE-LP';
-        motivo = 'Nota de Energia LP detectada: nome contém "LP"';
-      } else if (nomeNorm.includes('venda') || /\bve\b/.test(nome)) {
+        motivo = 'Nota de Energia LP: token "lp"';
+      } else if (tset.has('venda') || tset.has('ve')) {
         tipoDetectado = 'NE-VE';
-        motivo = 'Nota de Energia Venda detectada: nome contém "venda"/"VE"';
+        motivo = 'Nota de Energia Venda: token "venda/ve"';
       } else {
-        tipoDetectado = 'NE-CP'; // Padrão se só tem "nota"
-        motivo = 'Nota de Energia detectada: nome contém "nota"';
+        tipoDetectado = 'NE-CP'; // padrão se apenas "nota"
+        motivo = 'Nota de Energia: token "nota"';
       }
       
       // Data = data de modificação menos 1 mês
@@ -283,19 +285,20 @@ const EmpresasPage: React.FC = () => {
       motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
     }
     
-    // NOVA REGRA: DEVEC e LDO (ICMS) – contém 'devec' ou 'ldo' no nome → usar data de modificação
+    // NOVA REGRA: DEVEC e LDO (ICMS) – contém 'devec' ou 'ldo' no nome → usar mês anterior à modificação
     else if (nome.includes('devec') || nome.includes('ldo')) {
       const dataMod = new Date(file.lastModified);
+      dataMod.setMonth(dataMod.getMonth() - 1);
       const ano = dataMod.getFullYear();
       const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
       dataDetectada = `${ano}-${mes}`;
       confianca = 85;
       if (nome.includes('devec')) {
         tipoDetectado = 'DEVEC';
-        motivo = 'ICMS: DEVEC detectado no nome';
+        motivo = 'ICMS: DEVEC detectado no nome - usando mês anterior';
       } else {
         tipoDetectado = 'LDO';
-        motivo = 'ICMS: LDO detectado no nome';
+        motivo = 'ICMS: LDO detectado no nome - usando mês anterior';
       }
     }
     
@@ -310,12 +313,15 @@ const EmpresasPage: React.FC = () => {
       motivo = 'Estudo detectado: nome contém "estudo" - usando data de modificação';
     }
 
-    // REGRA 4: Documentos específicos (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo
+    // REGRA 4: Documentos/Minutas (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo (+ cadastro/comunicado/licença)
     else if (
-      nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))
-      || nome.includes('aditivo')
-      || nome.includes('contrato')
-      || nome.includes('procuração') || nomeNorm.includes('procuracao')
+      (tset.has('carta') && (tset.has('denuncia')))
+      || tset.has('aditivo')
+      || tset.has('contrato')
+      || tset.has('procuracao') || nome.includes('procuração')
+      || tset.has('cadastro')
+      || tset.has('comunicado')
+      || tset.has('licenca') || nome.includes('licença')
     ) {
       const dataMod = new Date(file.lastModified);
       const ano = dataMod.getFullYear();
@@ -324,18 +330,33 @@ const EmpresasPage: React.FC = () => {
       dataDetectada = `${ano}-${mes}`;
       confianca = 90;
 
-      if (nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))) {
-        tipoDetectado = 'DOC-CAR';
-        motivo = 'Documento detectado: "Carta denúncia" - usando mês/ano da modificação';
-      } else if (nome.includes('aditivo')) {
-        tipoDetectado = 'DOC-ADT';
-        motivo = 'Documento detectado: "Aditivo" - usando mês/ano da modificação';
-      } else if (nome.includes('contrato')) {
-        tipoDetectado = 'DOC-CTR';
-        motivo = 'Documento detectado: "Contrato" - usando mês/ano da modificação';
-      } else if (nome.includes('procuração') || nomeNorm.includes('procuracao')) {
-        tipoDetectado = 'DOC-PRO';
-        motivo = 'Documento detectado: "Procuração" - usando mês/ano da modificação';
+      const isMinuta = tset.has('minuta') || tset.has('minutas') || tset.has('min');
+      const pref = isMinuta ? 'MIN' : 'DOC';
+
+      if (tset.has('carta') && tset.has('denuncia')) {
+        tipoDetectado = `${pref}-CAR`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Carta denúncia" - usando mês/ano da modificação`;
+      } else if (tset.has('aditivo')) {
+        tipoDetectado = `${pref}-ADT`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Aditivo" - usando mês/ano da modificação`;
+      } else if (tset.has('contrato')) {
+        tipoDetectado = `${pref}-CTR`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Contrato" - usando mês/ano da modificação`;
+      } else if (tset.has('procuracao') || nome.includes('procuração')) {
+        tipoDetectado = `${pref}-PRO`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Procuração" - usando mês/ano da modificação`;
+      } else if (tset.has('cadastro')) {
+        tipoDetectado = `${pref}-CAD`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Cadastro" - usando mês/ano da modificação`;
+        confianca = 70;
+      } else if (tset.has('comunicado')) {
+        tipoDetectado = `${pref}-COM`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Comunicado" - usando mês/ano da modificação`;
+        confianca = 70;
+      } else if (tset.has('licenca') || nome.includes('licença')) {
+        tipoDetectado = `${pref}-LIC`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Licença" - usando mês/ano da modificação`;
+        confianca = 70;
       }
     }
 
@@ -500,6 +521,10 @@ const EmpresasPage: React.FC = () => {
       if (expandedEmpresas.has(empresa.id)) {
         await loadUnidadesEmpresa(empresa.id);
       }
+      // Se a empresa renomeada está selecionada, atualiza o nome exibido na sidebar
+      if (selectedEmpresa === String(empresa.id)) {
+        setSelectedEmpresaNome(novo);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao renomear empresa';
       alert(msg);
@@ -513,6 +538,10 @@ const EmpresasPage: React.FC = () => {
     try {
       await api.renomearUnidade(unidadeId, novo);
       await loadUnidadesEmpresa(empresaId);
+      // Se a unidade renomeada está selecionada, atualiza o nome exibido na sidebar
+      if (selectedEmpresa === String(empresaId) && selectedUnidade === String(unidadeId)) {
+        setSelectedUnidadeNome(novo);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao renomear unidade';
       alert(msg);

@@ -6,6 +6,7 @@ from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
 from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo
+from .detection import detect_type_and_date
 from .organizer import preview_moves, apply_moves
 from .routers import batch_organize
 from .routers import batch_debug
@@ -261,6 +262,13 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
         ano_mes = ano_mes[:7]
         nome_base = f"{tipo}-{ano_mes}"
     
+    # Para minutas (MIN-*) — mesma regra dos DOC-*
+    elif tipo.startswith("MIN-"):
+        if not ano_mes:
+            ano_mes = agora.strftime("%Y-%m")
+        ano_mes = ano_mes[:7]
+        nome_base = f"{tipo}-{ano_mes}"
+    
     else:
         # Tipo não reconhecido, usa formato básico
         nome_base = tipo
@@ -318,82 +326,11 @@ def _prev_month_str(dt: datetime) -> str:
 
 
 def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
-    """
-    Fallback simples de detecção de tipo/data no backend quando não vier do cliente.
-    Regras (espelhadas do frontend, com limitações por não ter lastModified real):
-      - FAT: nome 'YYYY-MM.ext' → data do nome
-      - NE-CP/NE-LP/NE-VE: contém 'nota'/'cp'/'lp'/'ve'/'venda' → data = mês anterior (aproximação)
-      - EST: contém 'estudo' → data = mês atual
-      - REL: contém 'relatorio|relatório' + 'MMM-YY' → converte
-    """
-    nome = filename.lower()
-    # normaliza removendo acentos para comparação robusta
-    try:
-        import unicodedata as _ud
-        nome_norm = ''.join(c for c in _ud.normalize('NFD', nome) if _ud.category(c) != 'Mn')
-    except Exception:
-        nome_norm = nome
-    # FAT – YYYY-MM
-    import re as _re
-    m = _re.match(r"^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx|csv|docx)$", nome)
-    if m:
-        ano_mes = f"{m.group(1)}-{m.group(2)}"
-        return ("FAT", ano_mes, f"Detectado FAT pelo nome: {ano_mes}")
-
-    # Notas – 'nota'/'cpc'/'lpc'/'cp'/'lp'/'ve'/'venda' → mês anterior
-    if ("nota" in nome) or ("cpc" in nome) or ("lpc" in nome) or ("cp" in nome) or ("lp" in nome) or ("ve" in nome) or ("venda" in nome_norm):
-        if "cpc" in nome:
-            tipo = "NE-CPC"
-        elif "lpc" in nome:
-            tipo = "NE-LPC"
-        elif "cp" in nome:
-            tipo = "NE-CP"
-        elif "lp" in nome:
-            tipo = "NE-LP"
-        elif "venda" in nome_norm or re.search(r"\bve\b", nome):
-            tipo = "NE-VE"
-        else:
-            tipo = "NE-CP"
-        ano_mes = _prev_month_str(datetime.now())
-        return (tipo, ano_mes, f"Detectado {tipo} por palavra-chave; usando mês anterior: {ano_mes}")
-
-    # ICMS – DEVEC/LDO → usa mês atual como aproximação
-    if "devec" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DEVEC", ano_mes, "Detectado DEVEC; usando mês atual")
-    if "ldo" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("LDO", ano_mes, "Detectado LDO; usando mês atual")
-
-    # Estudo – contém 'estudo'
-    if "estudo" in nome or "estudos" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("EST", ano_mes, "Detectado EST por palavra-chave; usando mês atual")
-
-    # Documentos específicos (prioridade: aditivo > contrato > procuração; datas conforme dicionário)
-    if ("carta" in nome and ("denúncia" in nome or "denuncia" in nome_norm)):
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-CAR", ano_mes, "Detectado Carta Denúncia; usando mês atual")
-    if "aditivo" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-ADT", ano_mes, "Detectado Aditivo; usando mês atual")
-    if "contrato" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-CTR", ano_mes, "Detectado Contrato; usando mês atual")
-    if ("procuração" in nome) or ("procuracao" in nome_norm):
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-PRO", ano_mes, "Detectado Procuração; usando mês atual")
-
-    # Relatórios – 'relatório' + MESES-YY
-    if ("relatorio" in nome) or ("relatório" in nome):
-        m2 = _re.search(r"(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-(\d{2})", nome)
-        if m2:
-            mapa = {"jan": "01", "fev": "02", "mar": "03", "abr": "04", "mai": "05", "jun": "06", "jul": "07", "ago": "08", "set": "09", "out": "10", "nov": "11", "dez": "12"}
-            mes = mapa.get(m2.group(1).lower(), "01")
-            ano = f"20{m2.group(2)}"
-            return ("REL", f"{ano}-{mes}", f"Detectado REL por mês abreviado: {m2.group(0).upper()}")
-
-    return ("DOC-COM", None, "Não identificado – default DOC-COM")
+    """Wrapper centralizado: usa detection.detect_type_and_date; mantém fallback DOC-COM."""
+    tipo, ano_mes, _score, motivo = detect_type_and_date(filename, None)
+    if not tipo:
+        return ("DOC-COM", None, "Não identificado – default DOC-COM")
+    return (tipo, ano_mes, motivo)
 
 def get_db():
     db = SessionLocal()
@@ -678,6 +615,8 @@ def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Sessio
 
 @app.post("/itens", response_model=schemas.ItemOut)
 def criar_item(payload: schemas.ItemCreate, db: Session = Depends(get_db)):
+    # Endpoint desativado temporariamente: registro de itens no banco indisponvel
+    raise HTTPException(404, "endpoint desativado")
     if not db.get(models.Unidade, payload.unidade_id):
         raise HTTPException(400, "unidade_id inválido")
     try:
@@ -1090,20 +1029,7 @@ async def executar_upload(
             
             # Cria registro no banco (Item)
             try:
-                id_item = build_item_id(tipo_arquivo, mes_ano)
-                titulo_visivel = descricao or novo_nome
-                
-                item = models.Item(
-                    id_item=id_item,
-                    tipo=tipo_arquivo,
-                    ano_mes=mes_ano,
-                    titulo_visivel=titulo_visivel,
-                    caminho_arquivo=str(caminho_completo),
-                    unidade_id=unidade_id
-                )
-                db.add(item)
-                db.flush()
-                
+                pass
             except Exception as e:
                 print(f"Erro ao criar item no banco: {e}")
                 # Continua mesmo se não conseguir criar o item

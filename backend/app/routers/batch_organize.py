@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
 import shutil
-import re
 from pathlib import Path
 from datetime import datetime
+import re
 
 from ..database import get_db
 from ..models import Empresa, Unidade
@@ -14,172 +14,9 @@ from ..schemas import (
     BatchProcessRequest, BatchProcessResponse, BatchProcessResult,
     FolderStructure
 )
+from ..detection import detect_type_and_date, suggest_new_name, top_level_folder
 
 router = APIRouter(prefix="/batch", tags=["batch-organize"])
-
-# Padrões de detecção automática
-DETECTION_PATTERNS = {
-    "FAT": r"^FAT-\d{4}-(0[1-9]|1[0-2])",
-    "NE-CP": r"^NE-CP-\d{4}-(0[1-9]|1[0-2])",
-    "NE-LP": r"^NE-LP-\d{4}-(0[1-9]|1[0-2])",
-    "NE-VE": r"^NE-VE-\d{4}-(0[1-9]|1[0-2])",
-    "NE-CPC": r"^NE-CPC-\d{4}-(0[1-9]|1[0-2])",
-    "NE-LPC": r"^NE-LPC-\d{4}-(0[1-9]|1[0-2])",
-    "DEVEC": r"^DEVEC-\d{4}-(0[1-9]|1[0-2])",
-    "LDO": r"^LDO-\d{4}-(0[1-9]|1[0-2])",
-    "REL": r"^REL-\d{4}-(0[1-9]|1[0-2])",
-    "RES": r"^RES-\d{4}-(0[1-9]|1[0-2])",
-    "EST": r"^EST-\d{4}-(0[1-9]|1[0-2])",
-    "DOC": r"^DOC-[A-Z]{3}-",
-    "MIN": r"^MIN-[A-Z]{3}-",
-    "CCEE": r"^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])"
-}
-
-# Mapeamento de tipos para pastas
-TYPE_TO_FOLDER = {
-    "FAT": "02 Faturas",
-    "NE-CP": "03 Notas de Energia",
-    "NE-LP": "03 Notas de Energia",
-    "NE-VE": "03 Notas de Energia",
-    "NE-CPC": "03 Notas de Energia",
-    "NE-LPC": "03 Notas de Energia",
-    "DEVEC": "11 ICMS",
-    "LDO": "11 ICMS",
-    "REL": "01 Relatórios e Resultados",
-    "RES": "01 Relatórios e Resultados",
-    "EST": "12 Estudos e Análises",
-    "DOC-CTR": "05 BM Energia",
-    "DOC-PRO": "05 BM Energia",
-    "DOC-CAD": "06 Documentos do Cliente",
-    "DOC-ADT": "06 Documentos do Cliente",
-    "DOC-COM": "06 Documentos do Cliente",
-    "DOC-LIC": "06 Documentos do Cliente",
-    "DOC-CAR": "06 Documentos do Cliente",
-    "MIN-CTR": "05 BM Energia",
-    "MIN-PRO": "05 BM Energia",
-    "MIN-CAR": "05 BM Energia",
-    "CCEE": "04 CCEE - DRI",
-    "CCEE-BOLETOCA": "04 CCEE - DRI"
-}
-
-def detect_file_type(filename: str) -> Optional[str]:
-    """Detecta o tipo de arquivo baseado no nome - EXATAS regras da primeira tela"""
-    nome = filename.lower()
-    nome_norm = nome.encode('ascii', 'ignore').decode('ascii')  # Remove acentos (substituto do normalize NFD)
-    
-    # REGRA 1: Padrões específicos do sistema (mantidos para compatibilidade)
-    for tipo, pattern in DETECTION_PATTERNS.items():
-        if re.match(pattern, filename):
-            return tipo
-    
-    # REGRA 2: Faturas - apenas data no nome (ex: "2025-08.pdf")
-    # Permite também XML para faturas no formato AAAA-MM.xml
-    regex_data_fatura = r'^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx?|docx?|xml)$'
-    if re.match(regex_data_fatura, nome, re.IGNORECASE):
-        return 'FAT'
-    
-    # REGRA 3: Notas de Energia - contém "nota", "cp", "lp", "ve", "cpc", "lpc" ou "venda"
-    elif 'nota' in nome or 'cpc' in nome or 'lpc' in nome or 'cp' in nome or 'lp' in nome or 've' in nome or 'venda' in nome_norm:
-        if 'cpc' in nome:
-            return 'NE-CPC'
-        elif 'lpc' in nome:
-            return 'NE-LPC'
-        elif 'cp' in nome:
-            return 'NE-CP'
-        elif 'lp' in nome:
-            return 'NE-LP'
-        elif 'venda' in nome_norm or re.search(r"\bve\b", nome):
-            return 'NE-VE'
-        else:
-            return 'NE-CP'  # Padrão se só tem "nota"
-    
-    # REGRA 4: ICMS - DEVEC/LDO
-    elif 'devec' in nome:
-        return 'DEVEC'
-    elif 'ldo' in nome:
-        return 'LDO'
-    
-    # REGRA 5: Estudo - contém "estudo" no nome
-    elif 'estudo' in nome:
-        return 'EST'
-    
-    # REGRA 6: Documentos específicos
-    elif ((nome.find('carta') != -1 and (nome.find('denúncia') != -1 or nome_norm.find('denuncia') != -1)) or
-          nome.find('aditivo') != -1 or
-          nome.find('contrato') != -1 or
-          (nome.find('procuração') != -1 or nome_norm.find('procuracao') != -1)):
-        
-        if nome.find('carta') != -1 and (nome.find('denúncia') != -1 or nome_norm.find('denuncia') != -1):
-            return 'DOC-CAR'
-        elif nome.find('aditivo') != -1:
-            return 'DOC-ADT'
-        elif nome.find('contrato') != -1:
-            return 'DOC-CTR'
-        elif nome.find('procuração') != -1 or nome_norm.find('procuracao') != -1:
-            return 'DOC-PRO'
-    
-    # REGRA 7: Relatórios - contém "relatório"
-    elif 'relatorio' in nome or 'relatório' in nome:
-        return 'REL'
-    
-    # REGRA 8: CCEE BOLETOCA - contém "boleto"
-    elif 'boleto' in nome:
-        return 'CCEE-BOLETOCA'
-    
-    # Se não detectou nada
-    return None
-
-def get_target_folder(file_type: str) -> str:
-    """Retorna a pasta de destino baseada no tipo do arquivo"""
-    return TYPE_TO_FOLDER.get(file_type, "07 Projetos")
-
-def generate_file_name(detected_type: str, filename: str, last_modified: Optional[float] = None) -> str:
-    """Gera novo nome do arquivo baseado no tipo detectado e data de modificação"""
-    from datetime import datetime
-    from pathlib import Path
-    
-    if detected_type == 'CCEE-BOLETOCA' and last_modified:
-        # Para BOLETOCA, usar data de modificação do arquivo
-        if last_modified > 1e12:  # JavaScript timestamp em milissegundos
-            mod_date = datetime.fromtimestamp(last_modified / 1000)
-        else:  # Timestamp em segundos
-            mod_date = datetime.fromtimestamp(last_modified)
-            
-        year = mod_date.year
-        month = f"{mod_date.month:02d}"
-        
-        # Extrair extensão do arquivo original
-        file_path = Path(filename)
-        extension = file_path.suffix
-        
-        # Gerar novo nome baseado na data de modificação
-        new_name = f"CCEE-BOLETOCA-{year}-{month}{extension}"
-        return new_name
-    
-    # Para outros tipos, manter nome original por enquanto
-    return filename
-
-def generate_new_name(filename: str, detected_type: str, last_modified: Optional[float] = None) -> str:
-    """Gera o novo nome do arquivo baseado no tipo e data de modificação"""
-    
-    # Para CCEE-BOLETOCA, usar a data de modificação do arquivo
-    if detected_type == "CCEE-BOLETOCA":
-        if last_modified:
-            # Converter timestamp para datetime
-            mod_date = datetime.fromtimestamp(last_modified / 1000)  # JavaScript envia em ms
-            year = mod_date.year
-            month = f"{mod_date.month:02d}"
-            
-            # Extrair extensão do arquivo original
-            file_path = Path(filename)
-            extension = file_path.suffix
-            
-            # Gerar novo nome baseado na data de modificação
-            new_name = f"CCEE-BOLETOCA-{year}-{month}{extension}"
-            return new_name
-    
-    # Para outros tipos, manter nome original por enquanto
-    return filename
 
 @router.post("/analyze", response_model=BatchAnalysisResponse)
 async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get_db)):
@@ -208,25 +45,21 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
         last_modified = file_data.last_modified
         
         # IGNORAR COMPLETAMENTE: Arquivos dentro da pasta "6_RELATÓRIOS" e TODAS suas subpastas
-        path_lower = file_path.lower()
-        path_norm = file_path.encode('ascii', 'ignore').decode('ascii').lower()
-        
-        # Verificar se o caminho contém "6_relatórios" OU "6_relatorios" (incluindo subpastas)
-        if ('6_relatórios' in path_lower or '6_relatorios' in path_norm or 
-            '6 relatórios' in path_lower or '6 relatorios' in path_norm or
-            '/6_relatórios/' in path_lower or '/6_relatorios/' in path_norm or
-            '\\6_relatórios\\' in path_lower or '\\6_relatorios\\' in path_norm):
-            # Arquivo está na pasta 6_RELATÓRIOS ou suas subpastas - IGNORAR COMPLETAMENTE
+        path_lower = (file_path or "").lower()
+        path_norm = (file_path or "").encode('ascii', 'ignore').decode('ascii').lower()
+        # Regex robusta: (^|/|\)0*6[_ -]*relatorios(/|\|$)
+        relatorios_re = re.compile(r"(^|[\\/])0*6[\s_-]*relatorios([\\/]|$)")
+        if relatorios_re.search(path_norm):
+            # Arquivo está na pasta 6_RELATÓRIOS (qualquer variação) ou subpastas: ignorar
             continue
         
-        # Detectar tipo
-        detected_type = detect_file_type(filename)
-        
+        # Detectar tipo (centralizado)
+        detected_type, detected_date, _score, _reason = detect_type_and_date(filename, last_modified)
+
         if detected_type:
-            target_folder = get_target_folder(detected_type)
-            # Gerar novo nome baseado no tipo e data de modificação
-            new_name = generate_file_name(detected_type, filename, last_modified)
-            
+            target_folder = top_level_folder(detected_type)
+            new_name = suggest_new_name(detected_type, filename, last_modified)
+
             detected_files.append(BatchFileItem(
                 name=filename,
                 path=file_path,
