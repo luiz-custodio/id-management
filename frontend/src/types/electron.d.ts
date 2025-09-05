@@ -24,6 +24,8 @@ declare global {
       checkForUpdates: () => Promise<any>;
       quitAndInstall: () => Promise<void>;
       onUpdateEvent: (callback: (evt: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
+      // FS helper
+      expandDroppedPaths?: (paths: string[]) => Promise<Array<{ path: string; name: string; size: number; lastModified: number }>>;
       
       platform: string;
       version: string;

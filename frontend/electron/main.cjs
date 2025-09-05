@@ -402,6 +402,33 @@ ipcMain.handle('updater-quit-and-install', () => {
   }
 });
 
+// FS helper: expande caminhos soltos no drop (arquivos e diretórios)
+ipcMain.handle('fs-expand-dropped', async (_evt, paths) => {
+  try {
+    const collect = [];
+    const walk = (p) => {
+      try {
+        const st = fs.statSync(p);
+        if (st.isDirectory()) {
+          const items = fs.readdirSync(p);
+          for (const name of items) walk(path.join(p, name));
+        } else if (st.isFile()) {
+          collect.push({
+            path: p,
+            name: path.basename(p),
+            size: st.size,
+            lastModified: st.mtimeMs
+          });
+        }
+      } catch (_) {}
+    };
+    for (const p of paths || []) walk(p);
+    return collect;
+  } catch (e) {
+    return [];
+  }
+});
+
 ipcMain.handle('set-server-config', (event, config) => {
   serverConfig = { ...serverConfig, ...config };
   saveServerConfigToDisk();

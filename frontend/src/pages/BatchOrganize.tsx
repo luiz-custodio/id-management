@@ -184,6 +184,14 @@ const FOLDER_STRUCTURE: FolderTarget[] = [
     description: 'EST',
     types: ['EST'],
     count: 0
+  },
+  {
+    id: 'miscelanea13',
+    name: '13 Miscelânea',
+    path: '13 Miscelânea',
+    description: 'Arquivos diversos (manuais)',
+    types: [],
+    count: 0
   }
 ];
 
@@ -197,6 +205,8 @@ const BatchOrganize: React.FC = () => {
   const [detectedFiles, setDetectedFiles] = useState<DetectedFile[]>([]);
   const [undetectedFiles, setUndetectedFiles] = useState<UndetectedFile[]>([]);
   const [folders, setFolders] = useState<FolderTarget[]>(FOLDER_STRUCTURE);
+  const [baseClientPath, setBaseClientPath] = useState<string>('');
+  const absPathMapRef = useRef<Map<string, string>>(new Map());
   
   // Estados de interface
   const [loading, setLoading] = useState(false);
@@ -240,36 +250,12 @@ const BatchOrganize: React.FC = () => {
     return { parentName, parentPath };
   }, []);
 
-  // Agrupa arquivos manuais por pasta de origem (exibe no UI)
-  const undetectedByFolder = useMemo(() => {
-    const groups = new Map<string, { title: string; items: UndetectedFile[] }>();
-    for (const f of undetectedFiles) {
-      const { parentName, parentPath } = getParentInfo(f.path || f.name);
-      const key = parentPath || '(raiz)';
-      if (!groups.has(key)) groups.set(key, { title: parentName, items: [] });
-      groups.get(key)!.items.push(f);
-    }
-    return Array.from(groups.entries())
-      .sort((a, b) => a[1].title.localeCompare(b[1].title, 'pt-BR', { sensitivity: 'base' }))
-      .map(([key, value]) => ({ key, ...value }));
-  }, [undetectedFiles, getParentInfo]);
-
   // Índices globais para cada arquivo não detectado (por path)
   const undetectedIndexMap = useMemo(() => {
     const m = new Map<string, number>();
     undetectedFiles.forEach((f, i) => m.set(f.path, i));
     return m;
   }, [undetectedFiles]);
-
-  // Controle de colapso/expansão dos grupos de origem
-  const [collapsedOriginGroups, setCollapsedOriginGroups] = useState<Set<string>>(new Set());
-  const toggleOriginGroup = (key: string) => {
-    setCollapsedOriginGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
 
   // Mover um arquivo detectado automaticamente para a aba Manual
   const moveToManual = (file: DetectedFile) => {
@@ -287,16 +273,18 @@ const BatchOrganize: React.FC = () => {
       path: file.path,
       size: file.size,
       isDetected: false,
-      assignedFolder: undefined,
+      assignedFolder: '13 Miscelânea',
       customName: file.newName || file.name,
     };
     setUndetectedFiles([...undetectedFiles, manualItem]);
 
     // Atualiza contadores das pastas (remove 1 da pasta sugerida automática)
-    const updatedFolders = folders.map((folder) => ({
-      ...folder,
-      count: folder.path === file.targetFolder ? Math.max(0, folder.count - 1) : folder.count,
-    }));
+    const updatedFolders = folders.map((folder) => {
+      const isSameOrParent = file.targetFolder === folder.path || file.targetFolder.startsWith(`${folder.path}/`);
+      let count = isSameOrParent ? Math.max(0, folder.count - 1) : folder.count;
+      if (folder.path === '13 Miscelânea') count += 1;
+      return { ...folder, count };
+    });
     setFolders(updatedFolders);
 
     toast.success(`${file.name} movido para organização manual`);
@@ -306,6 +294,10 @@ const BatchOrganize: React.FC = () => {
   useEffect(() => {
     const loadEmpresas = async () => {
       try {
+        try {
+          const cfg = await api.getConfig();
+          setBaseClientPath((cfg.basePath || '').replace(/\\/g, '/'));
+        } catch {}
         const data = await api.listarEmpresas();
         setEmpresas(data);
       } catch (error) {
@@ -362,7 +354,7 @@ const BatchOrganize: React.FC = () => {
       console.log('🔄 PROCESSANDO ARQUIVOS - Total:', fileList.length);
       
       // Utilitário para obter melhor caminho disponível
-      const getCandidatePath = (file: File) => (file as any).webkitRelativePath || (file as any).path || file.name;
+      const getCandidatePath = (file: File) => (file as any).webkitRelativePath || (file as any).relativePath || (file as any).path || file.name;
       // ESTRATÉGIA 1: Se temos algum caminho com diretórios, usar filtragem por path
       const hasPathInfo = fileList.some(file => {
         const p = getCandidatePath(file);
@@ -407,7 +399,7 @@ const BatchOrganize: React.FC = () => {
       
       // Preparar caminhos relativos consistentes a partir do melhor caminho disponível
       const candidatePaths = filteredFileList.map(f => (getCandidatePath(f) || '').replace(/\\/g, '/'));
-      const anyWKRP = filteredFileList.some(f => (f as any).webkitRelativePath);
+      const anyWKRP = filteredFileList.some(f => (f as any).webkitRelativePath || (f as any).relativePath);
       let rootDir = '';
       let relPaths: string[] = [];
       const looksAbsolute = (p: string) => /^[a-z]:\//i.test(p) || p.startsWith('/');
@@ -441,6 +433,15 @@ const BatchOrganize: React.FC = () => {
         size: file.size,
         last_modified: file.lastModified || Date.now()
       }));
+
+      // Map rel->abs (se disponível via Electron)
+      const relToAbs = new Map<string, string>();
+      filteredFileList.forEach((f, idx) => {
+        const rel = relPaths[idx] || f.name;
+        const abs = (f as any).path;
+        if (abs) relToAbs.set(rel, String(abs).replace(/\\/g, '/'));
+      });
+      absPathMapRef.current = relToAbs;
 
       console.log('📤 Enviando para API:', files.length, 'arquivos');
       files.forEach((file, index) => {
@@ -478,7 +479,8 @@ const BatchOrganize: React.FC = () => {
           name: file.name,
           path: file.path,
           size: file.size,
-          isDetected: false
+          isDetected: false,
+          assignedFolder: '13 Miscelânea'
         };
         undetected.push(undetectedFile);
         allFiles.push(undetectedFile);
@@ -491,9 +493,12 @@ const BatchOrganize: React.FC = () => {
       setLastSelectedIndex(null);
 
       // Atualizar contadores das pastas
+      // Conta por pasta de nível superior + manuais pré-atribuídos à Miscelânea
       const updatedFolders = folders.map(folder => ({
         ...folder,
-        count: detected.filter(f => f.targetFolder === folder.path).length
+        count:
+          detected.filter(f => (f.targetFolder === folder.path) || f.targetFolder.startsWith(`${folder.path}/`)).length +
+          undetected.filter(f => f.assignedFolder === folder.path).length
       }));
       setFolders(updatedFolders);
 
@@ -511,14 +516,49 @@ const BatchOrganize: React.FC = () => {
   const getFilesFromDropEvent = useCallback(async (event: any): Promise<File[]> => {
       try {
         const dt = (event && event.dataTransfer) ? event.dataTransfer : null;
+        console.log('[D&D] getFilesFromEvent: has dataTransfer =', !!dt);
         const out: File[] = [];
+        // Tentativa de determinar uma raiz absoluta a partir do drop
+        let absRoot: string | null = null;
+        try {
+          if (dt && typeof dt.getData === 'function') {
+            const uriList = dt.getData('text/uri-list');
+            if (uriList) {
+              const lines = uriList.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+              const fileUris = lines.filter(s => !s.startsWith('#') && s.startsWith('file:///'));
+              if (fileUris.length >= 1) {
+                // Usa o primeiro caminho como raiz
+                absRoot = decodeURI(fileUris[0].replace('file:///', ''));
+              }
+            }
+          }
+          if (!absRoot && dt && dt.files && dt.files.length) {
+            const p = (dt.files[0] as any).path as string | undefined;
+            if (p) {
+              const base = p.replace(/^.*[\\\/]/, '');
+              if (!/\.[A-Za-z0-9]{2,6}$/.test(base)) {
+                absRoot = p;
+              } else {
+                // Usa o diretório pai
+                absRoot = p.replace(/[\\\/][^\\\/]*$/, '');
+              }
+            }
+          }
+        } catch {}
+
+        const joinPath = (a: string, b: string) => {
+          const cleanA = (a || '').replace(/\\/g, '/').replace(/\/$/, '');
+          const cleanB = (b || '').replace(/\\/g, '/').replace(/^\//, '');
+          return `${cleanA}/${cleanB}`;
+        };
 
         // Helpers WebKit (Chrome/Electron) para ler diretórios recursivamente
         const readFileEntry = (entry: any, pathPrefix: string): Promise<void> => (
           new Promise((resolve, reject) => {
             entry.file((file: File) => {
               try {
-                (file as any).webkitRelativePath = `${pathPrefix}${file.name}`;
+                // Não escreva em webkitRelativePath (apenas getter). Use um campo customizado.
+                (file as any).relativePath = `${pathPrefix}${file.name}`;
                 out.push(file);
                 resolve();
               } catch (e) { reject(e); }
@@ -556,6 +596,7 @@ const BatchOrganize: React.FC = () => {
         };
 
         if (dt && dt.items && dt.items.length && (dt.items[0] as any).webkitGetAsEntry) {
+          console.log('[D&D] Using webkitGetAsEntry flow');
           for (let i = 0; i < dt.items.length; i++) {
             const item: any = dt.items[i];
             if (item.kind !== 'file') continue;
@@ -563,17 +604,79 @@ const BatchOrganize: React.FC = () => {
             if (!entry) continue;
             await walkEntry(entry, '');
           }
-          if (out.length) return out;
+          console.log('[D&D] webkitGetAsEntry collected', out.length, 'files');
+          if (out.length) {
+            if (absRoot) {
+              // Atribui path absoluto aproximado com base na raiz + relativePath
+              out.forEach((f: any) => {
+                if (f && f.relativePath && !f.path) {
+                  f.path = joinPath(absRoot!, f.relativePath);
+                }
+              });
+            }
+            return out;
+          }
         }
 
-        // Fallback: usa arquivos padrão (sem estrutura)
+        // Fallback 1: usa arquivos padrão (sem estrutura)
         const files: File[] = [];
         if (dt && dt.files) {
           for (let i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
         } else if (event && event.target && event.target.files) {
           for (let i = 0; i < event.target.files.length; i++) files.push(event.target.files[i]);
         }
-        return files;
+        console.log('[D&D] Fallback DataTransfer.files length =', files.length);
+        if (files.length > 0) return files;
+
+        // Fallback 2 (Electron): expande diretórios soltos via IPC
+        try {
+          let rawPaths: string[] = [];
+          if (dt && dt.files && dt.files.length) {
+            for (let i = 0; i < dt.files.length; i++) {
+              const p = (dt.files[i] as any).path;
+              if (p) rawPaths.push(p);
+            }
+          }
+          // Extra: Electron/Windows pode fornecer caminhos via text/uri-list
+          if (rawPaths.length === 0 && dt && typeof dt.getData === 'function') {
+            try {
+              const uriList = dt.getData('text/uri-list');
+              if (uriList) {
+                uriList.split(/\r?\n/).forEach(line => {
+                  const s = line.trim();
+                  if (!s || s.startsWith('#')) return;
+                  if (s.startsWith('file:///')) {
+                    const decoded = decodeURI(s.replace('file:///', ''));
+                    rawPaths.push(decoded);
+                  }
+                });
+              }
+              if (rawPaths.length === 0) {
+                const txt = dt.getData('text/plain');
+                if (txt) {
+                  txt.split(/\r?\n/).forEach(line => {
+                    const s = line.trim();
+                    if (s) rawPaths.push(s);
+                  });
+                }
+              }
+            } catch {}
+          }
+          if (window.electronAPI?.expandDroppedPaths && rawPaths.length) {
+            console.log('[D&D] Expanding via Electron IPC. Roots:', rawPaths.length);
+            const expanded = await window.electronAPI.expandDroppedPaths(rawPaths);
+            console.log('[D&D] IPC expanded files =', expanded?.length || 0);
+            const synthetic: File[] = expanded.map(e => {
+              const f = new File([], e.name, { lastModified: Math.floor(e.lastModified || Date.now()) });
+              (f as any).path = e.path; // preserva caminho absoluto
+              (f as any).relativePath = e.name; // mantém algo parecido com relativo
+              return f;
+            });
+            if (synthetic.length) return synthetic;
+          }
+        } catch {}
+
+        return [];
       } catch (e) {
         console.warn('getFilesFromEvent fallback por erro:', e);
         const files: File[] = [];
@@ -582,7 +685,56 @@ const BatchOrganize: React.FC = () => {
         } else if (event && event.target && event.target.files) {
           for (let i = 0; i < event.target.files.length; i++) files.push(event.target.files[i]);
         }
-        return files;
+        console.log('[D&D] Catch-all fallback files length =', files.length);
+        if (files.length) return files;
+
+        // Último recurso (Electron)
+        try {
+          let rawPaths: string[] = [];
+          if (event && event.dataTransfer && event.dataTransfer.files) {
+            for (let i = 0; i < event.dataTransfer.files.length; i++) {
+              const p = (event.dataTransfer.files[i] as any).path;
+              if (p) rawPaths.push(p);
+            }
+          }
+          if (rawPaths.length === 0 && event && event.dataTransfer && typeof event.dataTransfer.getData === 'function') {
+            try {
+              const uriList = event.dataTransfer.getData('text/uri-list');
+              if (uriList) {
+                uriList.split(/\r?\n/).forEach(line => {
+                  const s = line.trim();
+                  if (!s || s.startsWith('#')) return;
+                  if (s.startsWith('file:///')) {
+                    const decoded = decodeURI(s.replace('file:///', ''));
+                    rawPaths.push(decoded);
+                  }
+                });
+              }
+              if (rawPaths.length === 0) {
+                const txt = event.dataTransfer.getData('text/plain');
+                if (txt) {
+                  txt.split(/\r?\n/).forEach(line => {
+                    const s = line.trim();
+                    if (s) rawPaths.push(s);
+                  });
+                }
+              }
+            } catch {}
+          }
+          if (window.electronAPI?.expandDroppedPaths && rawPaths.length) {
+            console.log('[D&D] Catch-all IPC expand. Roots:', rawPaths.length);
+            const expanded = await window.electronAPI.expandDroppedPaths(rawPaths);
+            console.log('[D&D] Catch-all IPC expanded files =', expanded?.length || 0);
+            return expanded.map(e => {
+              const f = new File([], e.name, { lastModified: Math.floor(e.lastModified || Date.now()) });
+              (f as any).path = e.path;
+              (f as any).relativePath = e.name;
+              return f;
+            });
+          }
+        } catch {}
+
+        return [];
       }
   }, []);
 
@@ -817,8 +969,42 @@ const BatchOrganize: React.FC = () => {
   // Função para confirmar processamento final
   const confirmFinalProcessing = async () => {
     try {
-      // Aqui faria a chamada real para a API
-      toast.success(`${confirmDialog.results.length} arquivos organizados com sucesso!`);
+      const empresa = empresas.find(e => e.id.toString() === selectedEmpresa);
+      const unidade = unidades.find(u => u.id.toString() === selectedUnidade);
+      if (!empresa || !unidade) {
+        toast.error('Selecione empresa e unidade');
+        return;
+      }
+
+      const unitBase = `${baseClientPath}/${empresa.nome} - ${empresa.id_empresa}/${unidade.nome} - ${unidade.id_unidade}`.replace(/\\/g, '/');
+
+      const operations: Array<{ original_name: string; new_name: string; source_path: string; target_path: string; }> = [];
+      for (const f of detectedFiles) {
+        const src = absPathMapRef.current.get(f.path) || '';
+        const target = `${unitBase}/${f.targetFolder}/${f.newName}`;
+        operations.push({ original_name: f.name, new_name: f.newName, source_path: src, target_path: target });
+      }
+      for (const f of undetectedFiles) {
+        if (!f.assignedFolder) continue;
+        const src = absPathMapRef.current.get(f.path) || '';
+        const newName = f.customName || f.name;
+        const target = `${unitBase}/${f.assignedFolder}/${newName}`;
+        operations.push({ original_name: f.name, new_name: newName, source_path: src, target_path: target });
+      }
+
+      if (operations.length === 0) {
+        toast.info('Nada a processar');
+        return;
+      }
+
+      const response = await api.batchProcessFiles({
+        empresa_id: empresa.id,
+        unidade_id: unidade.id,
+        operations
+      } as any);
+
+      const ok = response.successful_files || 0;
+      toast.success(`Processamento concluído: ${ok}/${response.total_files} arquivos movidos`);
       
       // Limpar estado
       setFiles([]);
@@ -1006,6 +1192,7 @@ const BatchOrganize: React.FC = () => {
         <CardContent>
           <div
             {...getRootProps()}
+            data-allow-drop="true"
             className={`
               border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
               ${isDragActive 
@@ -1219,93 +1406,61 @@ const BatchOrganize: React.FC = () => {
               {/* Tab Manual */}
               <TabsContent value="manual" className="space-y-4">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Lista de arquivos não detectados (agrupados por pasta de origem, estilo de pastas) */}
+                  {/* Lista plana de arquivos não detectados */}
                   <div className="space-y-3">
-                    <h4 className="font-medium text-white">Pastas de origem (arquivos manuais):</h4>
+                    <h4 className="font-medium text-white">Arquivos para Miscelânea:</h4>
                     <ScrollArea className="h-64 w-full">
                       <div className="space-y-2 pr-2">
-                        {undetectedByFolder.map((group) => (
-                          <div key={group.key} className="border border-blue-500/30 rounded bg-white/5">
-                            {/* Cabeçalho no mesmo estilo das pastas de destino */}
-                            <button
-                              type="button"
-                              onClick={() => toggleOriginGroup(group.key)}
-                              className="w-full text-left p-3 hover:bg-white/10 transition-colors"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <FolderOpen className="h-4 w-4 text-blue-400" />
-                                  <div>
-                                    <div className="font-medium text-sm text-white">{group.title || '(raiz)'}</div>
-                                    <div className="text-xs text-blue-300">{group.key || '(raiz)'}</div>
-                                  </div>
+                        {undetectedFiles.map((file, index) => (
+                          <div
+                            key={file.path + '|' + index}
+                            draggable
+                            onDragStart={() => handleFileDragStart(file, index)}
+                            onDragEnd={handleFileDragEnd}
+                            onClick={(e) => handleManualItemClick(e, file, index)}
+                            className={`
+                              flex items-center justify-between p-2 border border-blue-500/20 rounded cursor-move transition-opacity mb-1
+                              ${draggedFiles?.some(df => df.path === file.path) ? 'opacity-50' : ''}
+                              ${file.assignedFolder ? 'bg-blue-500/20 border-blue-500/30' : 'hover:bg-white/10'}
+                              ${selectedManualPaths.has(file.path) ? 'ring-1 ring-blue-400' : ''}
+                            `}
+                          >
+                            <div className="flex items-center gap-2 flex-1">
+                              <FileText className="h-4 w-4 text-blue-300" />
+                              <div className="flex-1">
+                                <div className="font-medium text-sm text-white">
+                                  {file.customName || file.name}
                                 </div>
-                                {group.items.length > 0 && (
-                                  <Badge variant="secondary" className="bg-blue-500/30 text-blue-200">{group.items.length}</Badge>
+                                {file.assignedFolder && (
+                                  <div className="text-xs text-blue-300">
+                                    → {file.assignedFolder}
+                                  </div>
                                 )}
                               </div>
-                            </button>
-
-                            {/* Lista de arquivos dentro do grupo */}
-                            {!collapsedOriginGroups.has(group.key) && (
-                              <div className="p-2 border-t border-blue-500/20">
-                                {group.items.map((file, index) => {
-                                  const globalIndex = undetectedIndexMap.get(file.path) ?? index;
-                                  return (
-                                    <div
-                                      key={file.path + '|' + index}
-                                      draggable
-                                      onDragStart={() => handleFileDragStart(file, globalIndex)}
-                                      onDragEnd={handleFileDragEnd}
-                                      onClick={(e) => handleManualItemClick(e, file, globalIndex)}
-                                      className={`
-                                  flex items-center justify-between p-2 border border-blue-500/20 rounded cursor-move transition-opacity mb-1
-                                  ${draggedFiles?.some(df => df.path === file.path) ? 'opacity-50' : ''}
-                                  ${file.assignedFolder ? 'bg-blue-500/20 border-blue-500/30' : 'hover:bg-white/10'}
-                                  ${selectedManualPaths.has(file.path) ? 'ring-1 ring-blue-400' : ''}
-                                `}
-                                    >
-                                      <div className="flex items-center gap-2 flex-1">
-                                        <FileText className="h-4 w-4 text-blue-300" />
-                                        <div className="flex-1">
-                                          <div className="font-medium text-sm text-white">
-                                            {file.customName || file.name}
-                                          </div>
-                                          {file.assignedFolder && (
-                                            <div className="text-xs text-blue-300">
-                                              → {file.assignedFolder}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => handleRename(file)}
-                                          className="text-blue-300 hover:text-white hover:bg-blue-500/20"
-                                        >
-                                          <Edit className="h-3 w-3" />
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => removeFile(file)}
-                                          className="text-red-400 hover:text-white hover:bg-red-500/20"
-                                        >
-                                          <X className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleRename(file)}
+                                className="text-blue-300 hover:text-white hover:bg-blue-500/20"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeFile(file)}
+                                className="text-red-400 hover:text-white hover:bg-red-500/20"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                         {undetectedFiles.length === 0 && (
                           <div className="text-center py-8 text-blue-300">
-                            Todos os arquivos foram detectados automaticamente
+                            Nenhum arquivo manual pendente
                           </div>
                         )}
                       </div>

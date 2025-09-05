@@ -52,12 +52,24 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
         if relatorios_re.search(path_norm):
             # Arquivo está na pasta 6_RELATÓRIOS (qualquer variação) ou subpastas: ignorar
             continue
-        
+
         # Detectar tipo (centralizado)
         detected_type, detected_date, _score, _reason = detect_type_and_date(filename, last_modified)
 
         if detected_type:
+            # Pasta de destino (como era antes):
+            # - Para CCEE com código no nome, envia para "04 CCEE - DRI/<COD>"
+            # - Para CCEE-BOLETOCA, envia para "04 CCEE - DRI/BOLETOCA"
+            # - Demais: pasta de nível superior conforme mapeamento
             target_folder = top_level_folder(detected_type)
+
+            # Complemento para subpastas CCEE (CFZ003, GFN001, ... BOLETOCA, ND)
+            if detected_type.upper().startswith("CCEE"):
+                m_code = re.match(r"^CCEE-([A-Z]+\d{3}|BOLETOCA|ND)-", filename, re.IGNORECASE)
+                if m_code:
+                    code = m_code.group(1).upper()
+                    target_folder = os.path.join(target_folder, code)
+
             new_name = suggest_new_name(detected_type, filename, last_modified)
 
             detected_files.append(BatchFileItem(
@@ -77,10 +89,8 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
                 is_detected=False
             ))
     
-    # Construir caminho base
-    base_path = f"cliente/{empresa.nome} - {empresa.id_empresa}"
-    if unidade.id_unidade != "001":
-        base_path += f"/{unidade.nome} - {unidade.id_unidade}"
+    # Construir caminho base (sempre inclui a unidade, como na estrutura oficial)
+    base_path = f"cliente/{empresa.nome} - {empresa.id_empresa}/{unidade.nome} - {unidade.id_unidade}"
     
     return BatchAnalysisResponse(
         detected_files=detected_files,
@@ -255,6 +265,13 @@ async def get_folder_structure():
             "path": "12 Estudos e Análises",
             "description": "EST",
             "types": ["EST"]
+        },
+        {
+            "id": "miscelanea13",
+            "name": "13 Miscelânea",
+            "path": "13 Miscelânea",
+            "description": "Arquivos diversos (manuais)",
+            "types": []
         }
     ]
     

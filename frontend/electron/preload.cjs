@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('auto-update', listener)
   },
   
+  // FS helpers (drag & drop de pastas no Electron)
+  expandDroppedPaths: (paths) => ipcRenderer.invoke('fs-expand-dropped', paths),
+  
   // Informações do sistema
   platform: process.platform,
   version: process.versions.electron,

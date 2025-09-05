@@ -14,6 +14,21 @@ function App() {
   const RouterComponent = isElectron ? HashRouter : Router;
 
   useEffect(() => {
+    // Evita abrir arquivos/pastas quando o drop NÃO for dentro de uma área do app
+    const onDragOver = (e: DragEvent) => {
+      // Só bloqueia se não estiver sobre um elemento com data-allow-drop
+      const path = (e.composedPath && e.composedPath()) || [] as any;
+      const insideAllowed = Array.isArray(path) && path.some((n: any) => n?.getAttribute?.('data-allow-drop') === 'true');
+      if (!insideAllowed) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      const path = (e.composedPath && e.composedPath()) || [] as any;
+      const insideAllowed = Array.isArray(path) && path.some((n: any) => n?.getAttribute?.('data-allow-drop') === 'true');
+      if (!insideAllowed) e.preventDefault();
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+
     if (!window.electronAPI) return;
     const unsub = window.electronAPI.onUpdateEvent?.((evt) => {
       switch (evt.status) {
@@ -46,7 +61,11 @@ function App() {
           break;
       }
     });
-    return () => { try { unsub && unsub(); } catch {} };
+    return () => {
+      try { unsub && unsub(); } catch {}
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
   }, []);
 
   return (
