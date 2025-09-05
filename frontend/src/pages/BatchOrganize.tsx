@@ -507,8 +507,8 @@ const BatchOrganize: React.FC = () => {
           if (dt && typeof dt.getData === 'function') {
             const uriList = dt.getData('text/uri-list');
             if (uriList) {
-              const lines = uriList.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-              const fileUris = lines.filter(s => !s.startsWith('#') && s.startsWith('file:///'));
+              const lines: string[] = String(uriList).split(/\r?\n/).map((s: string) => s.trim()).filter((x: string) => !!x);
+              const fileUris = lines.filter((s: string) => !s.startsWith('#') && s.startsWith('file:///'));
               if (fileUris.length >= 1) {
                 // Usa o primeiro caminho como raiz
                 absRoot = decodeURI(fileUris[0].replace('file:///', ''));
