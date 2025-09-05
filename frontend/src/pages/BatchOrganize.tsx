@@ -216,6 +216,7 @@ const BatchOrganize: React.FC = () => {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   // File inputs (selecionar pasta/arquivos)
   const folderPickerRef = useRef<HTMLInputElement>(null);
+  const filesPickerRef = useRef<HTMLInputElement>(null);
   
   // Estados para pesquisa
   const [searchEmpresa, setSearchEmpresa] = useState('');
@@ -607,6 +608,18 @@ const BatchOrganize: React.FC = () => {
           for (let i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
         } else if (event && event.target && event.target.files) {
           for (let i = 0; i < event.target.files.length; i++) files.push(event.target.files[i]);
+        }
+        // Fallback 1.1: alguns apps colocam em dataTransfer.items; tenta extrair via getAsFile
+        if (files.length === 0 && dt && dt.items && dt.items.length) {
+          try {
+            for (let i = 0; i < dt.items.length; i++) {
+              const it = dt.items[i];
+              if (it.kind === 'file') {
+                const f = it.getAsFile();
+                if (f) files.push(f);
+              }
+            }
+          } catch {}
         }
         console.log('[D&D] Fallback DataTransfer.files length =', files.length);
         if (files.length > 0) return files;
@@ -1169,7 +1182,7 @@ const BatchOrganize: React.FC = () => {
           <CardHeader>
             <CardTitle className="text-white">2. Selecionar Arquivos</CardTitle>
             <CardDescription className="text-blue-200">
-              Arraste uma pasta ou selecione arquivos para organizar
+              Arraste arquivos e/ou pastas para organizar
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1199,6 +1212,17 @@ const BatchOrganize: React.FC = () => {
               hidden
               onChange={handleFolderPick}
             />
+            {/* Input escondido para selecionar ARQUIVOS (múltiplos) */}
+            <input
+              ref={filesPickerRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                const list = e.target.files; if (!list || list.length === 0) return;
+                processDroppedFiles(Array.from(list)); e.target.value = '';
+              }}
+            />
             <Upload className="mx-auto h-12 w-12 text-blue-300 mb-4" />
             {loading ? (
               <div className="flex items-center justify-center gap-2 text-white">
@@ -1216,9 +1240,9 @@ const BatchOrganize: React.FC = () => {
                   Sistema inteligente: filtra automaticamente arquivos CCEE da pasta "6_RELATÓRIOS"
                 </p>
                 <p className="text-xs text-blue-300 mt-1">
-                  Suporta: PDF, XLSX, XLS, CSV, DOCX, DOC
+                  Suporta: todos os tipos de arquivo
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex gap-2 justify-center">
                   <Button
                     type="button"
                     variant="outline"
@@ -1227,6 +1251,15 @@ const BatchOrganize: React.FC = () => {
                     disabled={!selectedEmpresa || !selectedUnidade}
                   >
                     Selecionar pasta...
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-blue-500/20 border-blue-500/50 text-white hover:bg-blue-500/30"
+                    onClick={() => filesPickerRef.current?.click()}
+                    disabled={!selectedEmpresa || !selectedUnidade}
+                  >
+                    Selecionar arquivos...
                   </Button>
                 </div>
               </div>

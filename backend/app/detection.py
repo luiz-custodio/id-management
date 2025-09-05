@@ -121,7 +121,8 @@ def detect_type_and_date(
     if ("carta" in _tset and ("denuncia" in _tset)):
         ym = _ym_from_ts(last_modified)
         return f"{pref}-CAR", ym, 90, f"{pref}-CAR por 'carta' + 'denúncia'"
-    if "aditivo" in _tset:
+    # ADITIVO: aceita variações comuns (aditivo/aditamento/adit) como palavra
+    if ("aditivo" in _tset) or ("aditamento" in _tset) or ("adit" in _tset):
         ym = _ym_from_ts(last_modified)
         return f"{pref}-ADT", ym, 90, f"{pref}-ADT por 'aditivo'"
     if "contrato" in _tset:
