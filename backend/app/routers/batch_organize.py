@@ -246,8 +246,8 @@ async def get_folder_structure():
             "id": "icms",
             "name": "11 ICMS",
             "path": "11 ICMS",
-            "description": "DEVEC e LDO",
-            "types": ["DEVEC", "LDO"]
+            "description": "ICMS-DEVEC, ICMS-LDO, ICMS-REC",
+            "types": ["ICMS-DEVEC", "ICMS-LDO", "ICMS-REC", "DEVEC", "LDO"]
         },
         {
             "id": "estudos",

@@ -62,7 +62,8 @@ def subpasta_por_tipo(tipo: str, ccee_cod: str | None = None) -> str:
         return "01 Relatórios e Resultados"
     if t == "EST":
         return "12 Estudos e Análises"
-    if t in {"DEVEC", "LDO"}:
+    # ICMS: novos prefixos e compatibilidade legada
+    if t.startswith("ICMS-") or t in {"DEVEC", "LDO", "REC"}:
         return "11 ICMS"
     # DOC e MIN residem em "05 BM Energia" (ver docs/dicionario-tags)
     if t.startswith("DOC-") or t.startswith("MIN-"):

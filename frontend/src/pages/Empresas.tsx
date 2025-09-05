@@ -156,8 +156,10 @@ const EmpresasPage: React.FC = () => {
     { value: 'REL', label: 'Relatório', requireDate: true },
     { value: 'RES', label: 'Resumo', requireDate: true },
     { value: 'EST', label: 'Estudo', requireDate: false },
-    { value: 'DEVEC', label: 'ICMS - DEVEC', requireDate: true },
-    { value: 'LDO', label: 'ICMS - LDO', requireDate: true },
+    // ICMS (novos)
+    { value: 'ICMS-DEVEC', label: 'ICMS - DEVEC', requireDate: true },
+    { value: 'ICMS-LDO', label: 'ICMS - LDO', requireDate: true },
+    { value: 'ICMS-REC', label: 'ICMS - REC', requireDate: true },
     { value: 'DOC-CTR', label: 'Documento - Contrato', requireDate: false },
     { value: 'DOC-ADT', label: 'Documento - Aditivo', requireDate: false },
     { value: 'DOC-CAD', label: 'Documento - Cadastro', requireDate: false },
@@ -285,8 +287,8 @@ const EmpresasPage: React.FC = () => {
       motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
     }
     
-    // NOVA REGRA: DEVEC e LDO (ICMS) – contém 'devec' ou 'ldo' no nome → usar mês anterior à modificação
-    else if (nome.includes('devec') || nome.includes('ldo')) {
+    // NOVA REGRA: ICMS (DEVEC/LDO/REC) – contém 'devec', 'ldo' ou 'rec' no nome → usar mês anterior à modificação
+    else if (nome.includes('devec') || nome.includes('ldo') || nome.includes('rec')) {
       const dataMod = new Date(file.lastModified);
       dataMod.setMonth(dataMod.getMonth() - 1);
       const ano = dataMod.getFullYear();
@@ -294,11 +296,16 @@ const EmpresasPage: React.FC = () => {
       dataDetectada = `${ano}-${mes}`;
       confianca = 85;
       if (nome.includes('devec')) {
-        tipoDetectado = 'DEVEC';
-        motivo = 'ICMS: DEVEC detectado no nome - usando mês anterior';
+        tipoDetectado = 'ICMS-DEVEC';
+        motivo = 'ICMS-DEVEC detectado no nome - usando mês anterior';
       } else {
-        tipoDetectado = 'LDO';
-        motivo = 'ICMS: LDO detectado no nome - usando mês anterior';
+        if (nome.includes('ldo')) {
+          tipoDetectado = 'ICMS-LDO';
+          motivo = 'ICMS-LDO detectado no nome - usando mês anterior';
+        } else {
+          tipoDetectado = 'ICMS-REC';
+          motivo = 'ICMS-REC detectado no nome - usando mês anterior';
+        }
       }
     }
     

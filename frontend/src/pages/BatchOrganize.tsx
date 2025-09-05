@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   Card, 
@@ -173,8 +173,8 @@ const FOLDER_STRUCTURE: FolderTarget[] = [
     id: 'icms',
     name: '11 ICMS',
     path: '11 ICMS',
-    description: 'DEVEC, LDO',
-    types: ['DEVEC', 'LDO'],
+    description: 'ICMS-DEVEC, ICMS-LDO, ICMS-REC',
+    types: ['ICMS-DEVEC', 'ICMS-LDO', 'ICMS-REC', 'DEVEC', 'LDO'],
     count: 0
   },
   {
@@ -204,6 +204,8 @@ const BatchOrganize: React.FC = () => {
   const [draggedFiles, setDraggedFiles] = useState<UndetectedFile[] | null>(null);
   const [selectedManualPaths, setSelectedManualPaths] = useState<Set<string>>(new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  // File inputs (selecionar pasta/arquivos)
+  const folderPickerRef = useRef<HTMLInputElement>(null);
   
   // Estados para pesquisa
   const [searchEmpresa, setSearchEmpresa] = useState('');
@@ -225,6 +227,49 @@ const BatchOrganize: React.FC = () => {
     isOpen: false,
     results: []
   });
+
+  // Utilitário: pasta pai do caminho de origem
+  const getParentInfo = useCallback((p: string) => {
+    const norm = (p || '').replace(/\\/g, '/');
+    const parts = norm.split('/').filter(Boolean);
+    if (parts.length <= 1) {
+      return { parentName: '(raiz)', parentPath: '' };
+    }
+    const parentName = parts[parts.length - 2] || '(raiz)';
+    const parentPath = parts.slice(0, -1).join('/');
+    return { parentName, parentPath };
+  }, []);
+
+  // Agrupa arquivos manuais por pasta de origem (exibe no UI)
+  const undetectedByFolder = useMemo(() => {
+    const groups = new Map<string, { title: string; items: UndetectedFile[] }>();
+    for (const f of undetectedFiles) {
+      const { parentName, parentPath } = getParentInfo(f.path || f.name);
+      const key = parentPath || '(raiz)';
+      if (!groups.has(key)) groups.set(key, { title: parentName, items: [] });
+      groups.get(key)!.items.push(f);
+    }
+    return Array.from(groups.entries())
+      .sort((a, b) => a[1].title.localeCompare(b[1].title, 'pt-BR', { sensitivity: 'base' }))
+      .map(([key, value]) => ({ key, ...value }));
+  }, [undetectedFiles, getParentInfo]);
+
+  // Índices globais para cada arquivo não detectado (por path)
+  const undetectedIndexMap = useMemo(() => {
+    const m = new Map<string, number>();
+    undetectedFiles.forEach((f, i) => m.set(f.path, i));
+    return m;
+  }, [undetectedFiles]);
+
+  // Controle de colapso/expansão dos grupos de origem
+  const [collapsedOriginGroups, setCollapsedOriginGroups] = useState<Set<string>>(new Set());
+  const toggleOriginGroup = (key: string) => {
+    setCollapsedOriginGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // Mover um arquivo detectado automaticamente para a aba Manual
   const moveToManual = (file: DetectedFile) => {
@@ -316,15 +361,20 @@ const BatchOrganize: React.FC = () => {
       
       console.log('🔄 PROCESSANDO ARQUIVOS - Total:', fileList.length);
       
-      // ESTRATÉGIA 1: Se temos webkitRelativePath, usar filtragem por path
-      const hasRelativePaths = fileList.some(file => file.webkitRelativePath);
+      // Utilitário para obter melhor caminho disponível
+      const getCandidatePath = (file: File) => (file as any).webkitRelativePath || (file as any).path || file.name;
+      // ESTRATÉGIA 1: Se temos algum caminho com diretórios, usar filtragem por path
+      const hasPathInfo = fileList.some(file => {
+        const p = getCandidatePath(file);
+        return !!p && /[\\/]/.test(p);
+      });
       
       let filteredFileList;
       
-      if (hasRelativePaths) {
-        console.log('✅ Usando filtragem por PATH (webkitRelativePath disponível)');
+      if (hasPathInfo) {
+        console.log('✅ Usando filtragem por PATH (informação de diretórios disponível)');
         filteredFileList = fileList.filter(file => {
-          const path = file.webkitRelativePath || file.name;
+          const path = getCandidatePath(file);
           const pathNorm = path.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
           // Regex robusta para 6_RELATÓRIOS e variações: (^|/|\)0*6[_ -]*relatorios(/|\|$)
           const relatoriosRe = /(^|[\\/])0*6[\s_-]*relatorios([\\/]|$)/i;
@@ -338,44 +388,58 @@ const BatchOrganize: React.FC = () => {
           return true;
         });
       } else {
-        console.log('⚠️ SEM webkitRelativePath - usando filtragem por NOME DE ARQUIVO');
-        // ESTRATÉGIA 2: Filtrar por padrões conhecidos de arquivos CCEE que NÃO queremos
-        const cceePatterns = /^(CFZ|GFN|LFN|LFRCA|LFRES|PEN|SUM|BOLETOCA|ND)/i;
-        
-        filteredFileList = fileList.filter(file => {
-          const fileName = file.name.toLowerCase();
-          
-          // Se é um arquivo CCEE conhecido E não tem path específico, provavelmente está em 6_RELATÓRIOS
-          if (cceePatterns.test(file.name)) {
-            console.log('🚫 IGNORANDO arquivo CCEE (provavelmente de 6_RELATÓRIOS):', file.name);
-            return false;
-          }
-          
-          // Se contém "boleto" no nome, também pode ser da pasta 6_RELATÓRIOS
-          if (fileName.includes('boleto')) {
-            console.log('🚫 IGNORANDO arquivo BOLETO (provavelmente de 6_RELATÓRIOS):', file.name);
-            return false;
-          }
-          
-          console.log('✅ ACEITO (nome):', file.name);
-          return true;
-        });
+        console.log('⚠️ SEM caminho de diretórios — aceitando todos e deixando o backend filtrar 6_RELATÓRIOS');
+        // Fallback mais seguro: não filtra por nome aqui; o backend já ignora 6_RELATÓRIOS
+        filteredFileList = fileList;
       }
       
       if (filteredFileList.length === 0) {
-        toast.warning('Todos os arquivos foram filtrados (pasta 6_RELATÓRIOS ou arquivos CCEE detectados).');
+        if (hasPathInfo) {
+          toast.warning('Todos os arquivos foram ignorados por estarem na pasta 6_RELATÓRIOS.');
+        } else {
+          toast.warning('Nenhum arquivo válido foi encontrado no drop.');
+        }
         setLoading(false);
         return;
       }
       
       console.log(`📊 FILTRAGEM: ${filteredFileList.length}/${fileList.length} arquivos aceitos`);
       
-      // Preparar dados dos arquivos para a API (APÓS FILTRAGEM)
-      const files = filteredFileList.map(file => ({
+      // Preparar caminhos relativos consistentes a partir do melhor caminho disponível
+      const candidatePaths = filteredFileList.map(f => (getCandidatePath(f) || '').replace(/\\/g, '/'));
+      const anyWKRP = filteredFileList.some(f => (f as any).webkitRelativePath);
+      let rootDir = '';
+      let relPaths: string[] = [];
+      const looksAbsolute = (p: string) => /^[a-z]:\//i.test(p) || p.startsWith('/');
+      if (!anyWKRP && candidatePaths.some(looksAbsolute)) {
+        // Deriva diretório comum (sem o nome do arquivo)
+        const dirPartsList = candidatePaths.map(p => p.replace(/\/[^\/]*$/, '').split('/').filter(Boolean));
+        let common: string[] = dirPartsList[0] || [];
+        for (let i = 1; i < dirPartsList.length; i++) {
+          const parts = dirPartsList[i];
+          const max = Math.min(common.length, parts.length);
+          let j = 0;
+          while (j < max && common[j] === parts[j]) j++;
+          common = common.slice(0, j);
+          if (common.length === 0) break;
+        }
+        rootDir = common.join('/');
+        relPaths = candidatePaths.map(p => {
+          if (!rootDir) return p.split('/').slice(-1).join('/');
+          const prefix = rootDir.endsWith('/') ? rootDir : rootDir + '/';
+          return p.startsWith(prefix) ? p.substring(prefix.length) : p.split('/').slice(-1).join('/');
+        });
+      } else {
+        // Já é relativo (webkitRelativePath) ou não há diretórios
+        relPaths = candidatePaths.map(p => p.includes('/') ? p : p.split('/').slice(-1).join('/'));
+      }
+
+      // Preparar dados dos arquivos para a API (APÓS RELATIVIZAÇÃO)
+      const files = filteredFileList.map((file, idx) => ({
         name: file.name,
-        path: file.webkitRelativePath || file.name,
+        path: relPaths[idx] || file.name,
         size: file.size,
-        last_modified: file.lastModified || Date.now() // Timestamp da data de modificação
+        last_modified: file.lastModified || Date.now()
       }));
 
       console.log('📤 Enviando para API:', files.length, 'arquivos');
@@ -443,34 +507,129 @@ const BatchOrganize: React.FC = () => {
   }, [selectedEmpresa, selectedUnidade, folders]);
 
   // Configuração do dropzone - ACEITAR PASTAS E ARQUIVOS
+  // Extrai arquivos preservando estrutura (reutilizável)
+  const getFilesFromDropEvent = useCallback(async (event: any): Promise<File[]> => {
+      try {
+        const dt = (event && event.dataTransfer) ? event.dataTransfer : null;
+        const out: File[] = [];
+
+        // Helpers WebKit (Chrome/Electron) para ler diretórios recursivamente
+        const readFileEntry = (entry: any, pathPrefix: string): Promise<void> => (
+          new Promise((resolve, reject) => {
+            entry.file((file: File) => {
+              try {
+                (file as any).webkitRelativePath = `${pathPrefix}${file.name}`;
+                out.push(file);
+                resolve();
+              } catch (e) { reject(e); }
+            }, reject);
+          })
+        );
+
+        const readAllDirectoryEntries = (reader: any): Promise<any[]> => (
+          new Promise((resolve, reject) => {
+            const entries: any[] = [];
+            const read = () => {
+              reader.readEntries((batch: any[]) => {
+                if (!batch || batch.length === 0) {
+                  resolve(entries);
+                } else {
+                  entries.push(...batch);
+                  read();
+                }
+              }, reject);
+            };
+            read();
+          })
+        );
+
+        const walkEntry = async (entry: any, prefix: string) => {
+          if (entry.isFile) {
+            await readFileEntry(entry, prefix);
+          } else if (entry.isDirectory) {
+            const reader = entry.createReader();
+            const entries = await readAllDirectoryEntries(reader);
+            for (const child of entries) {
+              await walkEntry(child, `${prefix}${entry.name}/`);
+            }
+          }
+        };
+
+        if (dt && dt.items && dt.items.length && (dt.items[0] as any).webkitGetAsEntry) {
+          for (let i = 0; i < dt.items.length; i++) {
+            const item: any = dt.items[i];
+            if (item.kind !== 'file') continue;
+            const entry = item.webkitGetAsEntry();
+            if (!entry) continue;
+            await walkEntry(entry, '');
+          }
+          if (out.length) return out;
+        }
+
+        // Fallback: usa arquivos padrão (sem estrutura)
+        const files: File[] = [];
+        if (dt && dt.files) {
+          for (let i = 0; i < dt.files.length; i++) files.push(dt.files[i]);
+        } else if (event && event.target && event.target.files) {
+          for (let i = 0; i < event.target.files.length; i++) files.push(event.target.files[i]);
+        }
+        return files;
+      } catch (e) {
+        console.warn('getFilesFromEvent fallback por erro:', e);
+        const files: File[] = [];
+        if (event && event.dataTransfer && event.dataTransfer.files) {
+          for (let i = 0; i < event.dataTransfer.files.length; i++) files.push(event.dataTransfer.files[i]);
+        } else if (event && event.target && event.target.files) {
+          for (let i = 0; i < event.target.files.length; i++) files.push(event.target.files[i]);
+        }
+        return files;
+      }
+  }, []);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (acceptedFiles: File[]) => {
+    // Integra com nosso extrator para arrastar pastas
+    getFilesFromEvent: getFilesFromDropEvent,
+    onDrop: async (acceptedFiles: File[], fileRejections, event) => {
       if (!selectedEmpresa || !selectedUnidade) {
         toast.error('Selecione empresa e unidade antes de arrastar arquivos');
         return;
       }
       
-      console.log('📁 ARQUIVOS RECEBIDOS:', acceptedFiles.length);
+      // Fallback: se por algum motivo veio vazio, tenta extrair direto do evento
+      let filesToProcess = acceptedFiles;
+      if ((!filesToProcess || filesToProcess.length === 0) && event) {
+        try {
+          filesToProcess = await getFilesFromDropEvent(event as any);
+        } catch {}
+      }
+
+      console.log('📁 ARQUIVOS RECEBIDOS:', filesToProcess?.length || 0);
       console.log('📁 Primeiros 5 arquivos:', acceptedFiles.slice(0, 5).map(f => ({
         name: f.name,
         webkitRelativePath: f.webkitRelativePath,
         size: f.size
       })));
       
-      processDroppedFiles(acceptedFiles);
+      if (!filesToProcess || filesToProcess.length === 0) {
+        toast.warning('Nenhum arquivo foi capturado no drop. Tente o botão "Selecionar pasta..."');
+        return;
+      }
+
+      processDroppedFiles(filesToProcess);
     },
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'text/csv': ['.csv'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/msword': ['.doc'],
-      'text/xml': ['.xml'],
-      'application/xml': ['.xml']
-    },
+    // Aceita todos os tipos; validação/filtragem ocorre na nossa lógica e no backend
     multiple: true
   });
+
+  // Selecionar uma pasta via input (webkitdirectory)
+  const handleFolderPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
+    const arr = Array.from(list);
+    processDroppedFiles(arr);
+    // Permite re-selecionar a mesma pasta depois
+    e.target.value = '';
+  };
 
   // Handlers para seleção e drag & drop manual (multi-seleção)
   const handleManualItemClick = (e: React.MouseEvent, file: UndetectedFile, index: number) => {
@@ -858,6 +1017,16 @@ const BatchOrganize: React.FC = () => {
             `}
           >
             <input {...getInputProps()} />
+            {/* Input escondido para selecionar PASTA (webkitdirectory) */}
+            <input
+              ref={folderPickerRef}
+              type="file"
+              // @ts-ignore - atributo não padronizado porém suportado em Chromium
+              webkitdirectory="true"
+              multiple
+              hidden
+              onChange={handleFolderPick}
+            />
             <Upload className="mx-auto h-12 w-12 text-blue-300 mb-4" />
             {loading ? (
               <div className="flex items-center justify-center gap-2 text-white">
@@ -877,6 +1046,17 @@ const BatchOrganize: React.FC = () => {
                 <p className="text-xs text-blue-300 mt-1">
                   Suporta: PDF, XLSX, XLS, CSV, DOCX, DOC
                 </p>
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-blue-500/20 border-blue-500/50 text-white hover:bg-blue-500/30"
+                    onClick={() => folderPickerRef.current?.click()}
+                    disabled={!selectedEmpresa || !selectedUnidade}
+                  >
+                    Selecionar pasta...
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -1037,56 +1217,88 @@ const BatchOrganize: React.FC = () => {
               {/* Tab Manual */}
               <TabsContent value="manual" className="space-y-4">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Lista de arquivos não detectados */}
+                  {/* Lista de arquivos não detectados (agrupados por pasta de origem, estilo de pastas) */}
                   <div className="space-y-3">
-                    <h4 className="font-medium text-white">Arquivos para organizar:</h4>
-                    <ScrollArea className="h-64 w-full border border-blue-500/30 rounded bg-white/5">
-                      <div className="p-4 space-y-2">
-                        {undetectedFiles.map((file, index) => (
-                          <div
-                            key={index}
-                            draggable
-                            onDragStart={() => handleFileDragStart(file, index)}
-                            onDragEnd={handleFileDragEnd}
-                            onClick={(e) => handleManualItemClick(e, file, index)}
-                            className={`
-                              flex items-center justify-between p-2 border rounded cursor-move transition-opacity
-                              ${draggedFiles?.some(df => df.path === file.path) ? 'opacity-50' : ''}
-                              ${file.assignedFolder ? 'bg-blue-500/20 border-blue-500/30' : 'hover:bg-white/10 border-blue-500/20'}
-                              ${selectedManualPaths.has(file.path) ? 'ring-1 ring-blue-400' : ''}
-                            `}
-                          >
-                            <div className="flex items-center gap-2 flex-1">
-                              <FileText className="h-4 w-4 text-blue-300" />
-                              <div className="flex-1">
-                                <div className="font-medium text-sm text-white">
-                                  {file.customName || file.name}
-                                </div>
-                                {file.assignedFolder && (
-                                  <div className="text-xs text-blue-300">
-                                    → {file.assignedFolder}
+                    <h4 className="font-medium text-white">Pastas de origem (arquivos manuais):</h4>
+                    <ScrollArea className="h-64 w-full">
+                      <div className="space-y-2 pr-2">
+                        {undetectedByFolder.map((group) => (
+                          <div key={group.key} className="border border-blue-500/30 rounded bg-white/5">
+                            {/* Cabeçalho no mesmo estilo das pastas de destino */}
+                            <button
+                              type="button"
+                              onClick={() => toggleOriginGroup(group.key)}
+                              className="w-full text-left p-3 hover:bg-white/10 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <FolderOpen className="h-4 w-4 text-blue-400" />
+                                  <div>
+                                    <div className="font-medium text-sm text-white">{group.title || '(raiz)'}</div>
+                                    <div className="text-xs text-blue-300">{group.key || '(raiz)'}</div>
                                   </div>
+                                </div>
+                                {group.items.length > 0 && (
+                                  <Badge variant="secondary" className="bg-blue-500/30 text-blue-200">{group.items.length}</Badge>
                                 )}
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleRename(file)}
-                                className="text-blue-300 hover:text-white hover:bg-blue-500/20"
-                              >
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => removeFile(file)}
-                                className="text-red-400 hover:text-white hover:bg-red-500/20"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </div>
+                            </button>
+
+                            {/* Lista de arquivos dentro do grupo */}
+                            {!collapsedOriginGroups.has(group.key) && (
+                              <div className="p-2 border-t border-blue-500/20">
+                                {group.items.map((file, index) => {
+                                  const globalIndex = undetectedIndexMap.get(file.path) ?? index;
+                                  return (
+                                    <div
+                                      key={file.path + '|' + index}
+                                      draggable
+                                      onDragStart={() => handleFileDragStart(file, globalIndex)}
+                                      onDragEnd={handleFileDragEnd}
+                                      onClick={(e) => handleManualItemClick(e, file, globalIndex)}
+                                      className={`
+                                  flex items-center justify-between p-2 border border-blue-500/20 rounded cursor-move transition-opacity mb-1
+                                  ${draggedFiles?.some(df => df.path === file.path) ? 'opacity-50' : ''}
+                                  ${file.assignedFolder ? 'bg-blue-500/20 border-blue-500/30' : 'hover:bg-white/10'}
+                                  ${selectedManualPaths.has(file.path) ? 'ring-1 ring-blue-400' : ''}
+                                `}
+                                    >
+                                      <div className="flex items-center gap-2 flex-1">
+                                        <FileText className="h-4 w-4 text-blue-300" />
+                                        <div className="flex-1">
+                                          <div className="font-medium text-sm text-white">
+                                            {file.customName || file.name}
+                                          </div>
+                                          {file.assignedFolder && (
+                                            <div className="text-xs text-blue-300">
+                                              → {file.assignedFolder}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleRename(file)}
+                                          className="text-blue-300 hover:text-white hover:bg-blue-500/20"
+                                        >
+                                          <Edit className="h-3 w-3" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => removeFile(file)}
+                                          className="text-red-400 hover:text-white hover:bg-red-500/20"
+                                        >
+                                          <X className="h-3 w-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         ))}
                         {undetectedFiles.length === 0 && (

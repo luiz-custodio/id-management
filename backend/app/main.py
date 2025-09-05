@@ -116,6 +116,10 @@ TIPO_PARA_PASTA = {
     "NE-VE": "03 Notas de Energia",
     "NE-CPC": "03 Notas de Energia",
     "NE-LPC": "03 Notas de Energia",
+    # ICMS (novo + compat)
+    "ICMS-DEVEC": "11 ICMS",
+    "ICMS-LDO": "11 ICMS",
+    "ICMS-REC": "11 ICMS",
     "DEVEC": "11 ICMS",
     "LDO": "11 ICMS",
     "REL": "01 Relatórios e Resultados",
@@ -248,7 +252,17 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
     agora = datetime.now()
     
     # Para tipos que requerem data
-    if tipo in ["FAT", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC", "DEVEC", "LDO", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
+    if (
+        tipo in [
+            "FAT", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC",
+            # ICMS compat
+            "DEVEC", "LDO",
+            # regulares
+            "REL", "RES", "EST"
+        ]
+        or tipo.startswith("CCEE-")
+        or tipo.upper().startswith("ICMS-")
+    ):
         if not ano_mes:
             # Se não fornecido, usa o mês atual
             ano_mes = agora.strftime("%Y-%m")

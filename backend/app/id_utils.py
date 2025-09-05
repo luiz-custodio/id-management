@@ -13,8 +13,13 @@ RE_CCEE = re.compile(
     r"^CCEE-(?:CFZ|GFN|LFN|LFRCA|LFRES|PEN|SUM|DCT)\d{3}-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$",
     re.IGNORECASE
 )
+# ICMS (novo padrão)
+RE_ICMS_DEVEC = re.compile(r"^ICMS-DEVEC-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
+RE_ICMS_LDO   = re.compile(r"^ICMS-LDO-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
+RE_ICMS_REC   = re.compile(r"^ICMS-REC-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
+# ICMS (legacy compat)
 RE_DEVEC = re.compile(r"^DEVEC-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
-RE_LDO = re.compile(r"^LDO-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
+RE_LDO   = re.compile(r"^LDO-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
 
 def validar_nome_arquivo(nome_arquivo: str) -> dict:
     for tag, rgx in [
@@ -24,6 +29,11 @@ def validar_nome_arquivo(nome_arquivo: str) -> dict:
         ("EST", RE_EST),
         ("DOC", RE_DOC),
         ("CCEE", RE_CCEE),
+        # Novos padrões ICMS
+        ("ICMS-DEVEC", RE_ICMS_DEVEC),
+        ("ICMS-LDO", RE_ICMS_LDO),
+        ("ICMS-REC", RE_ICMS_REC),
+        # Compatibilidade legada
         ("DEVEC", RE_DEVEC),
         ("LDO", RE_LDO),
     ]:
@@ -46,8 +56,17 @@ def next_id_unidade(db: Session, empresa_id: int) -> str:
 
 def build_item_id(tipo: str, ano_mes: str | None) -> str:
     t = tipo.upper()
-    base_tags = {"FAT", "REL", "EST", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC", "DEVEC", "LDO"}
-    if t in base_tags:
+    base_tags = {
+        # básicos
+        "FAT", "REL", "EST",
+        # NE
+        "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC",
+        # ICMS (novo)
+        "ICMS-DEVEC", "ICMS-LDO", "ICMS-REC",
+        # compat legada
+        "DEVEC", "LDO",
+    }
+    if t in base_tags or t.startswith("ICMS-"):
         if not ano_mes:
             raise ValueError(f"Para tipo {tipo}, 'ano_mes' (YYYY-MM) é obrigatório.")
         if t == "NE-CP": return f"NE-CP-{ano_mes}"

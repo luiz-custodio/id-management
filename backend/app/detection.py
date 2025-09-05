@@ -36,7 +36,7 @@ def detect_type_and_date(
     Regras principais (alinhadas ao frontend Empresas.tsx):
       - FAT: nome "YYYY-MM.ext" (pdf/xlsm/xlsx/docx/xml) → data do nome
       - Notas de Energia (NE-CP/NE-LP/NE-VE/NE-CPC/NE-LPC): palavras‑chave → data = lastModified − 1 mês (ou mês anterior de hoje)
-      - DEVEC/LDO: palavras‑chave → data = lastModified − 1 mês (ou mês anterior de hoje)
+      - ICMS (ICMS-DEVEC/ICMS-LDO/ICMS-REC): palavras‑chave → data = lastModified − 1 mês (ou mês anterior de hoje)
       - EST: contém "estudo" → data = mês do lastModified (ou mês atual)
       - REL: contém "relatório" + "MMM-YY" → converte; senão usa mês anterior
       - DOC-* (CAR/ADT/CTR/PRO/CAD/COM/LIC): palavras‑chave → data = mês do lastModified (ou mês atual)
@@ -47,9 +47,15 @@ def detect_type_and_date(
     nome = filename.lower()
     nome_norm = _remove_accents(nome)
 
-    # 1) Padrões exatos com prefixos conhecidos (RES, REL, FAT, NE-*, DEVEC, LDO, EST)
+    # 1) Padrões exatos com prefixos conhecidos (RES, REL, FAT, NE-*, ICMS-*, DEVEC/LDO legacy, EST)
     exact_prefixes = [
-        "FAT", "REL", "RES", "EST", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC", "DEVEC", "LDO",
+        "FAT", "REL", "RES", "EST",
+        # NE
+        "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC",
+        # ICMS novo
+        "ICMS-DEVEC", "ICMS-LDO", "ICMS-REC",
+        # compat legada
+        "DEVEC", "LDO",
     ]
     for pref in exact_prefixes:
         if re.match(rf"^{pref}-\\d{{4}}-(0[1-9]|1[0-2])", nome_raw):
@@ -91,13 +97,16 @@ def detect_type_and_date(
         ym = _ym_from_ts(last_modified, prev=True)
         return tipo, ym, 85, f"{motivo} (mês anterior)"
 
-    # 6) DEVEC / LDO
+    # 6) ICMS (DEVEC / LDO / REC)
     if "devec" in nome:
         ym = _ym_from_ts(last_modified, prev=True)
-        return "DEVEC", ym, 85, "DEVEC por palavra-chave (mês anterior)"
+        return "ICMS-DEVEC", ym, 85, "ICMS-DEVEC por palavra-chave (mês anterior)"
     if "ldo" in nome:
         ym = _ym_from_ts(last_modified, prev=True)
-        return "LDO", ym, 85, "LDO por palavra-chave (mês anterior)"
+        return "ICMS-LDO", ym, 85, "ICMS-LDO por palavra-chave (mês anterior)"
+    if "rec" in nome:
+        ym = _ym_from_ts(last_modified, prev=True)
+        return "ICMS-REC", ym, 85, "ICMS-REC por palavra-chave (mês anterior)"
 
     # 7) Estudo
     if ("estudo" in nome) or ("estudos" in nome):
@@ -189,7 +198,7 @@ def top_level_folder(file_type: str) -> str:
         return "06 Documentos do Cliente"
     if t in {"REL", "RES"}:
         return "01 Relatórios e Resultados"
-    if t in {"DEVEC", "LDO"}:
+    if t.startswith("ICMS-") or t in {"DEVEC", "LDO"}:
         return "11 ICMS"
     if t == "EST":
         return "12 Estudos e Análises"
