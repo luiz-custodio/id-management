@@ -238,24 +238,7 @@ const BatchOrganize: React.FC = () => {
     results: []
   });
 
-  // Utilitário: pasta pai do caminho de origem
-  const getParentInfo = useCallback((p: string) => {
-    const norm = (p || '').replace(/\\/g, '/');
-    const parts = norm.split('/').filter(Boolean);
-    if (parts.length <= 1) {
-      return { parentName: '(raiz)', parentPath: '' };
-    }
-    const parentName = parts[parts.length - 2] || '(raiz)';
-    const parentPath = parts.slice(0, -1).join('/');
-    return { parentName, parentPath };
-  }, []);
-
-  // Índices globais para cada arquivo não detectado (por path)
-  const undetectedIndexMap = useMemo(() => {
-    const m = new Map<string, number>();
-    undetectedFiles.forEach((f, i) => m.set(f.path, i));
-    return m;
-  }, [undetectedFiles]);
+  // (Sem agrupamento por pasta nos manuais)
 
   // Mover um arquivo detectado automaticamente para a aba Manual
   const moveToManual = (file: DetectedFile) => {
