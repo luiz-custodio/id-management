@@ -589,7 +589,9 @@ const BatchOrganize: React.FC = () => {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     // Integra com nosso extrator para arrastar pastas
     getFilesFromEvent: getFilesFromDropEvent,
-    onDrop: async (acceptedFiles: File[], fileRejections, event) => {
+    onDrop: async (acceptedFiles: File[], _fileRejections, event) => {
+      // Marcar parâmetro como usado para satisfazer TS (noUnusedParameters)
+      void _fileRejections;
       if (!selectedEmpresa || !selectedUnidade) {
         toast.error('Selecione empresa e unidade antes de arrastar arquivos');
         return;
