@@ -104,7 +104,8 @@ SUBPASTAS_PADRAO = [
     "09 CCEE - Modelagem",
     "10 Distribuidora",
     "11 ICMS",
-    "12 Estudos e Análises"
+    "12 Estudos e Análises",
+    "13 Miscelânea",
 ]
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs

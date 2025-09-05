@@ -15,6 +15,7 @@ SUBPASTAS_NUMERADAS = [
     "10 Distribuidora",
     "11 ICMS",
     "12 Estudos e Análises",
+    "13 Miscelânea",
 ]
 
 # Subcódigos CCEE usados na pasta 04 e também replicados na 09 (Modelagem)
