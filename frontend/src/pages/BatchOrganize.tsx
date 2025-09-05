@@ -1000,14 +1000,21 @@ const BatchOrganize: React.FC = () => {
       } as any);
 
       const ok = response.successful_files || 0;
-      toast.success(`Processamento concluído: ${ok}/${response.total_files} arquivos movidos`);
-      
-      // Limpar estado
-      setFiles([]);
-      setDetectedFiles([]);
-      setUndetectedFiles([]);
-      setFolders(FOLDER_STRUCTURE);
-      setConfirmDialog({ isOpen: false, results: [] });
+      if (ok === response.total_files) {
+        toast.success(`Processamento concluído: ${ok}/${response.total_files} arquivos movidos`);
+        // Limpar estado
+        setFiles([]);
+        setDetectedFiles([]);
+        setUndetectedFiles([]);
+        setFolders(FOLDER_STRUCTURE);
+        setConfirmDialog({ isOpen: false, results: [] });
+      } else {
+        // Exibe erros para diagnóstico
+        const failed = (response.results || []).filter(r => !r.success);
+        const firstErr = failed[0]?.error || 'Falha desconhecida';
+        toast.error(`Falha: ${ok}/${response.total_files}. Ex.: ${firstErr}`);
+        // Mantém o diálogo aberto mostrando os alvos (para revisar caminhos)
+      }
       
     } catch (error) {
       toast.error('Erro ao salvar arquivos');
