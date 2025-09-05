@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { 
   Card, 
@@ -642,11 +642,11 @@ const BatchOrganize: React.FC = () => {
             try {
               const uriList = dt.getData('text/uri-list');
               if (uriList) {
-                uriList.split(/\r?\n/).forEach(line => {
-                  const s = line.trim();
+                uriList.split(/\r?\n/).forEach((line: string) => {
+                  const s: string = line.trim();
                   if (!s || s.startsWith('#')) return;
                   if (s.startsWith('file:///')) {
-                    const decoded = decodeURI(s.replace('file:///', ''));
+                    const decoded: string = decodeURI(s.replace('file:///', ''));
                     rawPaths.push(decoded);
                   }
                 });
@@ -654,8 +654,8 @@ const BatchOrganize: React.FC = () => {
               if (rawPaths.length === 0) {
                 const txt = dt.getData('text/plain');
                 if (txt) {
-                  txt.split(/\r?\n/).forEach(line => {
-                    const s = line.trim();
+                  txt.split(/\r?\n/).forEach((line: string) => {
+                    const s: string = line.trim();
                     if (s) rawPaths.push(s);
                   });
                 }
@@ -701,11 +701,11 @@ const BatchOrganize: React.FC = () => {
             try {
               const uriList = event.dataTransfer.getData('text/uri-list');
               if (uriList) {
-                uriList.split(/\r?\n/).forEach(line => {
-                  const s = line.trim();
+                uriList.split(/\r?\n/).forEach((line: string) => {
+                  const s: string = line.trim();
                   if (!s || s.startsWith('#')) return;
                   if (s.startsWith('file:///')) {
-                    const decoded = decodeURI(s.replace('file:///', ''));
+                    const decoded: string = decodeURI(s.replace('file:///', ''));
                     rawPaths.push(decoded);
                   }
                 });
@@ -713,8 +713,8 @@ const BatchOrganize: React.FC = () => {
               if (rawPaths.length === 0) {
                 const txt = event.dataTransfer.getData('text/plain');
                 if (txt) {
-                  txt.split(/\r?\n/).forEach(line => {
-                    const s = line.trim();
+                  txt.split(/\r?\n/).forEach((line: string) => {
+                    const s: string = line.trim();
                     if (s) rawPaths.push(s);
                   });
                 }

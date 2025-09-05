@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Building2, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -160,7 +160,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       {/* Footer - Compacto */}
       <div className="p-3 border-t border-blue-800/30 text-xs text-blue-300/60">
         <div className="truncate">Sistema de Gerenciamento de IDs</div>
-        <div className="text-blue-400/50 font-mono">v0.4.1</div>
+        <div className="text-blue-400/50 font-mono">v1.0.36</div>
       </div>
     </div>
   );
