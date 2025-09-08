@@ -65,19 +65,27 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
             # - Demais: pasta de nível superior conforme mapeamento
             target_folder = top_level_folder(detected_type)
 
-            # Complemento para subpastas CCEE (CFZ003, GFN001, ... BOLETOCA, ND)
+            # Complemento para subpastas CCEE (CFZ003, GFN001, BOLETOCA, ND)
             if detected_type.upper().startswith("CCEE"):
-                m_code = re.match(r"^CCEE-([A-Z]+\d{3}|BOLETOCA|ND)-", filename, re.IGNORECASE)
-                if m_code:
-                    code = m_code.group(1).upper()
-                    target_folder = os.path.join(target_folder, code)
+                # BOLETOCA sempre vai para subpasta dedicada
+                if detected_type.upper() == "CCEE-BOLETOCA":
+                    target_folder = os.path.join(target_folder, "BOLETOCA")
+                else:
+                    m_code = re.match(r"^CCEE-([A-Z]+\d{3}|ND)-", filename, re.IGNORECASE)
+                    if m_code:
+                        code = m_code.group(1).upper()
+                        target_folder = os.path.join(target_folder, code)
 
-            # Padroniza nome para FAT como FAT-YYYY-MM.ext; demais mantêm heurística existente
-            if detected_type == "FAT" and detected_date:
-                ext = os.path.splitext(filename)[1]
-                new_name = f"FAT-{detected_date}{ext}"
+            # Padronização de nomes por tipo com base na data detectada
+            ext = os.path.splitext(filename)[1]
+            if detected_date and detected_type in {"FAT", "REL", "RES", "EST", "ICMS-DEVEC", "ICMS-LDO", "ICMS-REC", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC"}:
+                new_name = f"{detected_type}-{detected_date}{ext}"
             else:
+                # Mantém heurística existente (ex.: CCEE com código permanece como no nome original; BOLETOCA tem regra própria)
                 new_name = suggest_new_name(detected_type, filename, last_modified)
+            # Força padronização em todos os tipos não-CCEE quando data detectada existir
+            if detected_date and detected_type and not detected_type.upper().startswith("CCEE"):
+                new_name = f"{detected_type}-{detected_date}{ext}"
 
             detected_files.append(BatchFileItem(
                 name=filename,
