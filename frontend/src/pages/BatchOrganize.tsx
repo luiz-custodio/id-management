@@ -989,7 +989,6 @@ const BatchOrganize: React.FC = () => {
         const src = absPathMapRef.current.get(rel) || '';
         const target = `${unitBase}/${f.targetFolder}/${f.newName}`;
         operations.push({ original_name: f.name, new_name: f.newName, source_path: src, target_path: target, rel_path: rel });
-        targets.push({ original_name: f.name, new_name: f.newName, target_path: target });
       }
       for (const f of undetectedFiles) {
         if (!f.assignedFolder) continue;
@@ -998,7 +997,6 @@ const BatchOrganize: React.FC = () => {
         const newName = f.customName || f.name;
         const target = `${unitBase}/${f.assignedFolder}/${newName}`;
         operations.push({ original_name: f.name, new_name: newName, source_path: src, target_path: target, rel_path: rel });
-        targets.push({ original_name: f.name, new_name: newName, target_path: target });
       }
 
       if (operations.length === 0) {
