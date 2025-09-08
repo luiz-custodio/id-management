@@ -199,6 +199,7 @@ async def process_files_upload(
     unidade_id: int = Form(...),
     file_targets_json: str = Form(...),
     files: List[UploadFile] = File(...),
+    conflict_strategy: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -236,6 +237,8 @@ async def process_files_upload(
     results: List[BatchProcessResult] = []
     successful_count = 0
 
+    strategy = (conflict_strategy or 'version').lower()
+
     for idx, meta in enumerate(targets):
         try:
             original_name = str(meta.get("original_name") or files[idx].filename or f"file_{idx}")
@@ -252,15 +255,27 @@ async def process_files_upload(
             # Resolver conflito de nome (não sobrescrever)
             candidate = final_path
             if candidate.exists():
-                base = candidate.stem
-                ext = candidate.suffix
-                i = 1
-                while True:
-                    alt = final_dir / f"{base}-{i}{ext}"
-                    if not alt.exists():
-                        candidate = alt
-                        break
-                    i += 1
+                if strategy == 'skip':
+                    results.append(BatchProcessResult(
+                        original_name=original_name,
+                        new_name=final_path.name,
+                        target_path=str(final_path),
+                        success=False,
+                        error="Conflito: arquivo já existe (skip)"
+                    ))
+                    continue
+                elif strategy == 'overwrite':
+                    pass  # mantém candidate = final_path
+                else:  # version (padrão)
+                    base = candidate.stem
+                    ext = candidate.suffix
+                    i = 1
+                    while True:
+                        alt = final_dir / f"{base}-{i}{ext}"
+                        if not alt.exists():
+                            candidate = alt
+                            break
+                        i += 1
 
             # Escreve conteúdo
             content = await files[idx].read()

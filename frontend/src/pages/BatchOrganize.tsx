@@ -984,7 +984,6 @@ const BatchOrganize: React.FC = () => {
       const unitBase = `${baseClientPath}/${empresa.nome} - ${empresa.id_empresa}/${unidade.nome} - ${unidade.id_unidade}`.replace(/\\/g, '/');
 
       const operations: Array<{ original_name: string; new_name: string; source_path: string; target_path: string; rel_path: string; }> = [];
-      const targets: Array<{ original_name: string; new_name: string; target_path: string }> = [];
       for (const f of detectedFiles) {
         const rel = f.path;
         const src = absPathMapRef.current.get(rel) || '';
@@ -1043,8 +1042,21 @@ const BatchOrganize: React.FC = () => {
         }
       }
 
-      const filesToSend: File[] = [];
+      // Deduplicar por destino (target_path) para não criar cópias repetidas
+      const uniqueOpsMap = new Map<string, typeof operations[number]>();
       operations.forEach(op => {
+        uniqueOpsMap.set(op.target_path, op);
+      });
+      const uniqueOps = Array.from(uniqueOpsMap.values());
+
+      const targets: Array<{ original_name: string; new_name: string; target_path: string }> = uniqueOps.map(op => ({
+        original_name: op.original_name,
+        new_name: op.new_name,
+        target_path: op.target_path,
+      }));
+
+      const filesToSend: File[] = [];
+      uniqueOps.forEach(op => {
         const fileObj = fileMapRef.current.get(op.rel_path);
         if (fileObj) filesToSend.push(fileObj);
       });
@@ -1053,14 +1065,15 @@ const BatchOrganize: React.FC = () => {
       try {
         setUploadProgress(0);
         response = await api.batchProcessFilesUpload(empresa.id, unidade.id, targets, filesToSend, {
-          onProgress: (p) => setUploadProgress(p)
+          onProgress: (p) => setUploadProgress(p),
+          conflictStrategy: 'skip'
         });
       } catch (e) {
         // Fallback para modo antigo baseado em caminho (para ambientes locais)
         response = await api.batchProcessFiles({
           empresa_id: empresa.id,
           unidade_id: unidade.id,
-          operations: operations.map(({ rel_path, ...rest }) => rest)
+          operations: uniqueOps.map(({ rel_path, ...rest }) => rest)
         } as any);
       }
 

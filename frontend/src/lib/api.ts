@@ -425,12 +425,13 @@ export const api = {
     unidadeId: number,
     fileTargets: Array<{ original_name: string; new_name: string; target_path: string }>,
     files: File[],
-    opts?: { onProgress?: (percent: number) => void }
+    opts?: { onProgress?: (percent: number) => void; conflictStrategy?: 'overwrite'|'version'|'skip' }
   ): Promise<BatchProcessResponse> {
     const form = new FormData();
     form.append('empresa_id', String(empresaId));
     form.append('unidade_id', String(unidadeId));
     form.append('file_targets_json', JSON.stringify(fileTargets));
+    if (opts?.conflictStrategy) form.append('conflict_strategy', opts.conflictStrategy);
     files.forEach((f) => form.append('files', f));
     const BASE = await apiBase();
 
