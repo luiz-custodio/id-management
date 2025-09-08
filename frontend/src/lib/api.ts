@@ -419,6 +419,60 @@ export const api = {
       body: JSON.stringify(request),
     });
   },
+
+  async batchProcessFilesUpload(
+    empresaId: number,
+    unidadeId: number,
+    fileTargets: Array<{ original_name: string; new_name: string; target_path: string }>,
+    files: File[],
+    opts?: { onProgress?: (percent: number) => void }
+  ): Promise<BatchProcessResponse> {
+    const form = new FormData();
+    form.append('empresa_id', String(empresaId));
+    form.append('unidade_id', String(unidadeId));
+    form.append('file_targets_json', JSON.stringify(fileTargets));
+    files.forEach((f) => form.append('files', f));
+    const BASE = await apiBase();
+
+    // Se foi pedido progresso, usa XHR para obter upload progress
+    if (opts?.onProgress) {
+      return new Promise((resolve, reject) => {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${BASE}/batch/process-upload`);
+          xhr.onload = () => {
+            try {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(JSON.parse(xhr.responseText));
+              } else {
+                reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          };
+          xhr.onerror = () => reject(new Error('Falha de rede no upload'));
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const percent = Math.round((evt.loaded / evt.total) * 100);
+              opts.onProgress?.(percent);
+            }
+          };
+          xhr.send(form);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }
+
+    // Sem progresso, usa fetch
+    const r = await fetch(`${BASE}/batch/process-upload`, { method: 'POST', body: form });
+    if (!r.ok) {
+      const msg = await r.text().catch(() => '');
+      throw new Error(msg || 'Erro ao processar upload em lote');
+    }
+    return r.json();
+  },
   
   async batchGetFolders(): Promise<{ folders: FolderStructure[] }> {
     return http<{ folders: FolderStructure[] }>("/batch/folders");

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi import UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
@@ -6,6 +7,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 import re
+import json
 
 from ..database import get_db
 from ..models import Empresa, Unidade
@@ -70,7 +72,12 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
                     code = m_code.group(1).upper()
                     target_folder = os.path.join(target_folder, code)
 
-            new_name = suggest_new_name(detected_type, filename, last_modified)
+            # Padroniza nome para FAT como FAT-YYYY-MM.ext; demais mantêm heurística existente
+            if detected_type == "FAT" and detected_date:
+                ext = os.path.splitext(filename)[1]
+                new_name = f"FAT-{detected_date}{ext}"
+            else:
+                new_name = suggest_new_name(detected_type, filename, last_modified)
 
             detected_files.append(BatchFileItem(
                 name=filename,
@@ -173,6 +180,104 @@ async def process_files(request: BatchProcessRequest, db: Session = Depends(get_
     return BatchProcessResponse(
         results=results,
         total_files=len(request.operations),
+        successful_files=successful_count,
+        empresa_info=f"{empresa.nome} ({empresa.id_empresa})",
+        unidade_info=f"{unidade.nome} ({unidade.id_unidade})"
+    )
+
+@router.post("/process-upload", response_model=BatchProcessResponse)
+async def process_files_upload(
+    empresa_id: int = Form(...),
+    unidade_id: int = Form(...),
+    file_targets_json: str = Form(...),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Variante do processamento que recebe os arquivos via multipart.
+    Útil quando o servidor não tem acesso ao path local do cliente.
+
+    Campos:
+      - empresa_id, unidade_id: validação de escopo
+      - file_targets_json: JSON array com objetos { original_name, new_name, target_path }
+      - files: conteúdo binário na mesma ordem do array acima
+    """
+    # Buscar empresa e unidade
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa não encontrada")
+
+    unidade = db.query(Unidade).filter(
+        Unidade.id == unidade_id,
+        Unidade.empresa_id == empresa_id
+    ).first()
+    if not unidade:
+        raise HTTPException(status_code=404, detail="Unidade não encontrada")
+
+    # Parse metadata
+    try:
+        targets = json.loads(file_targets_json or "[]")
+        if not isinstance(targets, list):
+            raise ValueError("file_targets_json deve ser lista")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"JSON inválido em file_targets_json: {e}")
+
+    if len(targets) != len(files):
+        raise HTTPException(status_code=400, detail="Quantidade de arquivos difere da quantidade de alvos")
+
+    results: List[BatchProcessResult] = []
+    successful_count = 0
+
+    for idx, meta in enumerate(targets):
+        try:
+            original_name = str(meta.get("original_name") or files[idx].filename or f"file_{idx}")
+            new_name = str(meta.get("new_name") or original_name)
+            target_path = str(meta.get("target_path") or "").strip()
+            if not target_path:
+                raise ValueError("target_path vazio")
+
+            # Normaliza e garante diretório
+            final_path = Path(target_path)
+            final_dir = final_path.parent
+            final_dir.mkdir(parents=True, exist_ok=True)
+
+            # Resolver conflito de nome (não sobrescrever)
+            candidate = final_path
+            if candidate.exists():
+                base = candidate.stem
+                ext = candidate.suffix
+                i = 1
+                while True:
+                    alt = final_dir / f"{base}-{i}{ext}"
+                    if not alt.exists():
+                        candidate = alt
+                        break
+                    i += 1
+
+            # Escreve conteúdo
+            content = await files[idx].read()
+            with open(candidate, "wb") as f:
+                f.write(content)
+
+            results.append(BatchProcessResult(
+                original_name=original_name,
+                new_name=candidate.name,
+                target_path=str(candidate),
+                success=True
+            ))
+            successful_count += 1
+        except Exception as e:
+            results.append(BatchProcessResult(
+                original_name=str(meta.get("original_name", f"file_{idx}")),
+                new_name=str(meta.get("new_name", "")),
+                target_path=str(meta.get("target_path", "")),
+                success=False,
+                error=str(e)
+            ))
+
+    return BatchProcessResponse(
+        results=results,
+        total_files=len(files),
         successful_files=successful_count,
         empresa_info=f"{empresa.nome} ({empresa.id_empresa})",
         unidade_info=f"{unidade.nome} ({unidade.id_unidade})"

@@ -26,6 +26,8 @@ declare global {
       onUpdateEvent: (callback: (evt: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
       // FS helper
       expandDroppedPaths?: (paths: string[]) => Promise<Array<{ path: string; name: string; size: number; lastModified: number }>>;
+      // Read files content by absolute path (Electron only)
+      readFiles?: (paths: string[]) => Promise<Array<{ path: string; name: string; size: number; lastModified: number; contentBase64: string }>>;
       
       platform: string;
       version: string;

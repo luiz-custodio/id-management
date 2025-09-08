@@ -207,10 +207,12 @@ const BatchOrganize: React.FC = () => {
   const [folders, setFolders] = useState<FolderTarget[]>(FOLDER_STRUCTURE);
   const [baseClientPath, setBaseClientPath] = useState<string>('');
   const absPathMapRef = useRef<Map<string, string>>(new Map());
+  const fileMapRef = useRef<Map<string, File>>(new Map());
   
   // Estados de interface
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [draggedFiles, setDraggedFiles] = useState<UndetectedFile[] | null>(null);
   const [selectedManualPaths, setSelectedManualPaths] = useState<Set<string>>(new Set());
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
@@ -426,6 +428,13 @@ const BatchOrganize: React.FC = () => {
         if (abs) relToAbs.set(rel, String(abs).replace(/\\/g, '/'));
       });
       absPathMapRef.current = relToAbs;
+      // Map rel->File original (para enviar via multipart quando necessário)
+      const relToFile = new Map<string, File>();
+      filteredFileList.forEach((f, idx) => {
+        const rel = relPaths[idx] || f.name;
+        relToFile.set(rel, f);
+      });
+      fileMapRef.current = relToFile;
 
       console.log('📤 Enviando para API:', files.length, 'arquivos');
       files.forEach((file, index) => {
@@ -974,18 +983,23 @@ const BatchOrganize: React.FC = () => {
 
       const unitBase = `${baseClientPath}/${empresa.nome} - ${empresa.id_empresa}/${unidade.nome} - ${unidade.id_unidade}`.replace(/\\/g, '/');
 
-      const operations: Array<{ original_name: string; new_name: string; source_path: string; target_path: string; }> = [];
+      const operations: Array<{ original_name: string; new_name: string; source_path: string; target_path: string; rel_path: string; }> = [];
+      const targets: Array<{ original_name: string; new_name: string; target_path: string }> = [];
       for (const f of detectedFiles) {
-        const src = absPathMapRef.current.get(f.path) || '';
+        const rel = f.path;
+        const src = absPathMapRef.current.get(rel) || '';
         const target = `${unitBase}/${f.targetFolder}/${f.newName}`;
-        operations.push({ original_name: f.name, new_name: f.newName, source_path: src, target_path: target });
+        operations.push({ original_name: f.name, new_name: f.newName, source_path: src, target_path: target, rel_path: rel });
+        targets.push({ original_name: f.name, new_name: f.newName, target_path: target });
       }
       for (const f of undetectedFiles) {
         if (!f.assignedFolder) continue;
-        const src = absPathMapRef.current.get(f.path) || '';
+        const rel = f.path;
+        const src = absPathMapRef.current.get(rel) || '';
         const newName = f.customName || f.name;
         const target = `${unitBase}/${f.assignedFolder}/${newName}`;
-        operations.push({ original_name: f.name, new_name: newName, source_path: src, target_path: target });
+        operations.push({ original_name: f.name, new_name: newName, source_path: src, target_path: target, rel_path: rel });
+        targets.push({ original_name: f.name, new_name: newName, target_path: target });
       }
 
       if (operations.length === 0) {
@@ -993,12 +1007,64 @@ const BatchOrganize: React.FC = () => {
         return;
       }
 
-      const response = await api.batchProcessFiles({
-        empresa_id: empresa.id,
-        unidade_id: unidade.id,
-        operations
-      } as any);
+      // Preparar arquivos para envio (multipart). Alguns 'File' podem ter size=0 (fallback Electron) e precisam ser lidos via IPC.
+      const missingAbsPaths: string[] = [];
+      const relForMissing: string[] = [];
+      operations.forEach(op => {
+        const f = fileMapRef.current.get(op.rel_path);
+        if (!f || f.size === 0) {
+          const abs = op.source_path || absPathMapRef.current.get(op.rel_path) || '';
+          if (abs) { missingAbsPaths.push(abs); relForMissing.push(op.rel_path); }
+        }
+      });
 
+      if (missingAbsPaths.length && (window as any).electronAPI?.readFiles) {
+        try {
+          const read = await (window as any).electronAPI.readFiles(missingAbsPaths);
+          // read é um array alinhado com missingAbsPaths
+          read.forEach((entry: any, idx: number) => {
+            try {
+              const b64: string = entry.contentBase64 || '';
+              const rel = relForMissing[idx];
+              if (!b64 || !rel) return;
+              const binary = atob(b64);
+              const len = binary.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+              const fileObj = new File([bytes], entry.name || rel.split('/').pop() || 'file', {
+                type: 'application/octet-stream',
+                lastModified: Math.floor(entry.lastModified || Date.now())
+              });
+              fileMapRef.current.set(rel, fileObj);
+            } catch {}
+          });
+        } catch {
+          // Sem IPC, seguirá tentando via modo por paths
+        }
+      }
+
+      const filesToSend: File[] = [];
+      operations.forEach(op => {
+        const fileObj = fileMapRef.current.get(op.rel_path);
+        if (fileObj) filesToSend.push(fileObj);
+      });
+
+      let response = null as any;
+      try {
+        setUploadProgress(0);
+        response = await api.batchProcessFilesUpload(empresa.id, unidade.id, targets, filesToSend, {
+          onProgress: (p) => setUploadProgress(p)
+        });
+      } catch (e) {
+        // Fallback para modo antigo baseado em caminho (para ambientes locais)
+        response = await api.batchProcessFiles({
+          empresa_id: empresa.id,
+          unidade_id: unidade.id,
+          operations: operations.map(({ rel_path, ...rest }) => rest)
+        } as any);
+      }
+
+      setUploadProgress(null);
       const ok = response.successful_files || 0;
       if (ok === response.total_files) {
         toast.success(`Processamento concluído: ${ok}/${response.total_files} arquivos movidos`);
@@ -1651,22 +1717,38 @@ const BatchOrganize: React.FC = () => {
               ))}
             </div>
           </ScrollArea>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDialog({ isOpen: false, results: [] })}
-              className="border-blue-500/30 text-blue-200 hover:bg-blue-500/20"
-            >
-              Cancelar
-            </Button>
-            <Button 
+            <DialogFooter>
+              {uploadProgress !== null && (
+                <div className="flex-1 text-sm text-blue-300 mr-2 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Enviando arquivos... {uploadProgress}%
+                </div>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setConfirmDialog({ isOpen: false, results: [] })}
+                className="border-blue-500/30 text-blue-200 hover:bg-blue-500/20"
+                >
+                Cancelar
+              </Button>
+              <Button 
               onClick={confirmFinalProcessing}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Processar Arquivos
-            </Button>
-          </DialogFooter>
+              disabled={uploadProgress !== null}
+              className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+              {uploadProgress === null ? (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Processar Arquivos
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando... {uploadProgress}%
+                </>
+              )}
+              </Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
       </div>

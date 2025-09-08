@@ -434,3 +434,27 @@ ipcMain.handle('set-server-config', (event, config) => {
   saveServerConfigToDisk();
   return serverConfig;
 });
+
+// Lê conteúdo de arquivos locais (para upload em lote quando servidor é remoto)
+ipcMain.handle('fs-read-files', async (_evt, paths) => {
+  try {
+    const out = [];
+    for (const p of paths || []) {
+      try {
+        const st = fs.statSync(p);
+        if (!st.isFile()) continue;
+        const buf = fs.readFileSync(p);
+        out.push({
+          path: p,
+          name: path.basename(p),
+          size: st.size,
+          lastModified: st.mtimeMs,
+          contentBase64: buf.toString('base64'),
+        });
+      } catch (_) { /* ignore single file errors */ }
+    }
+    return out;
+  } catch (_) {
+    return [];
+  }
+});
