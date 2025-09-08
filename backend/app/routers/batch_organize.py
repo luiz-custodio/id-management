@@ -55,6 +55,78 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
             # Arquivo está na pasta 6_RELATÓRIOS (qualquer variação) ou subpastas: ignorar
             continue
 
+        # Mapeamentos diretos por pasta de origem (sem renomear)
+        # Regras solicitadas:
+        #  - tudo em 1_BM ENERGIA -> "05 BM Energia"
+        #  - tudo em 2_{nome do cliente} -> "06 Documentos do Cliente"
+        #  - tudo em 3_ distribuidora -> "10 Distribuidora"
+        #  - tudo em 4_CCEE -> "09 CCEE - Modelagem"
+        #  - tudo em 5_PROJETOS -> "07 Projetos"
+        #  - tudo em 7_COMERCIALIZADORAS -> "08 Comercializadoras"
+        # Detecção robusta com normalização ASCII + insensível a maiúsculas e variações com 0 e separadores
+        # Extrai primeiro segmento da pasta de origem (para evitar falsos positivos em nomes de arquivo)
+        def _first_segment(raw: str) -> str:
+            try:
+                s = re.split(r"[\\/]+", raw or "")
+                for seg in s:
+                    if seg:
+                        return seg
+                return ""
+            except Exception:
+                return ""
+
+        # Considera como 'pasta de origem' somente se houver pelo menos um separador no caminho
+        has_dir_sep = bool(re.search(r"[\\/]", file_path or ""))
+        first_seg_raw = _first_segment(file_path or "") if has_dir_sep else ""
+        # Normalizado (sem acento/caixa) a partir do caminho normalizado geral
+        try:
+            parts_norm = [p for p in re.split(r"[\\/]+", path_norm or "") if p]
+            first_seg_norm = parts_norm[0] if parts_norm else ""
+        except Exception:
+            first_seg_norm = ""
+
+        direct_target = None
+        try:
+            # Helpers de regex por pasta – aplicados SOMENTE ao primeiro segmento
+            re_1_bm = re.compile(r"^0*1[\s_-]*bm[\s_-]*energia$")
+            # 2_{nome do cliente}: precisa de separador após o '2' para evitar casar com '2019-...'
+            re_2_cli = re.compile(r"^0*2[\s_-].+")
+            # 3_{distribuidora}: nome livre aps '3_'
+            re_3_dist = re.compile(r"^0*3[\s_-].+")
+            re_4_ccee = re.compile(r"^0*4[\s_-]*ccee$")
+            re_5_proj = re.compile(r"^0*5[\s_-]*projetos?$")
+            re_7_com  = re.compile(r"^0*7[\s_-]*comercializadora(s)?$")
+
+            seg = first_seg_norm
+            if seg and re_1_bm.match(seg):
+                direct_target = "05 BM Energia"
+            elif seg and re_2_cli.match(seg):
+                direct_target = "06 Documentos do Cliente"
+            elif seg and re_3_dist.match(seg):
+                direct_target = "10 Distribuidora"
+            elif seg and re_4_ccee.match(seg):
+                direct_target = "09 CCEE - Modelagem"
+            elif seg and re_5_proj.match(seg):
+                direct_target = "07 Projetos"
+            elif seg and re_7_com.match(seg):
+                direct_target = "08 Comercializadoras"
+        except Exception:
+            direct_target = None
+
+        if direct_target:
+            # Sem renomear: mantém o nome original
+            detected_files.append(BatchFileItem(
+                name=filename,
+                path=file_path,
+                size=file_size,
+                is_detected=True,
+                detected_type="DIRECT",
+                target_folder=direct_target,
+                new_name=filename,
+                source_folder=first_seg_raw or None,
+            ))
+            continue
+
         # Detectar tipo (centralizado)
         detected_type, detected_date, _score, _reason = detect_type_and_date(filename, last_modified)
 
@@ -94,14 +166,16 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
                 is_detected=True,
                 detected_type=detected_type,
                 target_folder=target_folder,
-                new_name=new_name
+                new_name=new_name,
+                source_folder=first_seg_raw or None,
             ))
         else:
             undetected_files.append(BatchFileItem(
                 name=filename,
                 path=file_path,
                 size=file_size,
-                is_detected=False
+                is_detected=False,
+                source_folder=first_seg_raw or None,
             ))
     
     # Construir caminho base (sempre inclui a unidade, como na estrutura oficial)

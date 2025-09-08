@@ -73,6 +73,7 @@ export type BatchFileItem = {
   detected_type?: string;
   target_folder?: string;
   new_name?: string;
+  source_folder?: string;
 };
 
 export type BatchAnalysisRequest = {

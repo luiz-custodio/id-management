@@ -55,6 +55,7 @@ interface FileItem {
   type?: string;
   newName?: string;
   targetFolder?: string;
+  sourceFolder?: string;
 }
 
 interface DetectedFile extends FileItem {
@@ -413,6 +414,33 @@ const BatchOrganize: React.FC = () => {
       }
 
       // Preparar dados dos arquivos para a API (APÓS RELATIVIZAÇÃO)
+      // Reancorar paths em pastas numeradas (0..7_...) quando detectadas nos caminhos absolutos
+      try {
+        const stripAccents = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const isCategorySeg = (seg: string) => {
+          const n = stripAccents(seg);
+          return (
+            /^0[\s_-]*resultados$/.test(n) ||
+            /^0*1[\s_-]*bm[\s_-]*energia$/.test(n) ||
+            /^0*2[\s_-].+/.test(n) ||
+            /^0*3[\s_-].+/.test(n) ||
+            /^0*4[\s_-]*ccee$/.test(n) ||
+            /^0*5[\s_-]*projetos?$/.test(n) ||
+            /^0*6[\s_-]*relatorios$/.test(n) ||
+            /^0*7[\s_-]*comercializadora(s)?$/.test(n)
+          );
+        };
+        const anchored = relPaths.map((rp, i) => {
+          const full = candidatePaths[i] || rp;
+          const segs = full.split('/').filter(Boolean);
+          const idx = segs.findIndex(isCategorySeg);
+          return idx >= 0 ? segs.slice(idx).join('/') : rp;
+        });
+        if (anchored.some((x, i) => x !== relPaths[i])) {
+          relPaths = anchored;
+        }
+      } catch {}
+
       const files = filteredFileList.map((file, idx) => ({
         name: file.name,
         path: relPaths[idx] || file.name,
@@ -461,7 +489,8 @@ const BatchOrganize: React.FC = () => {
           isDetected: true,
           type: file.detected_type!,
           newName: file.new_name || file.name,
-          targetFolder: file.target_folder!
+          targetFolder: file.target_folder!,
+          sourceFolder: file.source_folder || undefined,
         };
         detected.push(detectedFile);
         allFiles.push(detectedFile);
@@ -473,7 +502,8 @@ const BatchOrganize: React.FC = () => {
           path: file.path,
           size: file.size,
           isDetected: false,
-          assignedFolder: '13 Miscelânea'
+          assignedFolder: '13 Miscelânea',
+          sourceFolder: file.source_folder || undefined,
         };
         undetected.push(undetectedFile);
         allFiles.push(undetectedFile);
@@ -1476,6 +1506,9 @@ const BatchOrganize: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-green-400" />
                           <span className="font-medium text-white">{file.name}</span>
+                          {file.sourceFolder && (
+                            <Badge variant="secondary" className="bg-slate-600/30 text-blue-200">{file.sourceFolder}</Badge>
+                          )}
                           <Badge variant="secondary" className="bg-blue-500/30 text-blue-200">{file.type}</Badge>
                         </div>
                         <div className="flex items-center gap-2 text-sm text-blue-200">

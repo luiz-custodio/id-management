@@ -90,6 +90,8 @@ class BatchFileItem(BaseModel):
     detected_type: Optional[str] = None
     target_folder: Optional[str] = None
     new_name: Optional[str] = None
+    # Pasta de origem (primeiro segmento do caminho relativo enviado)
+    source_folder: Optional[str] = None
 
 class BatchAnalysisResponse(BaseModel):
     detected_files: List[BatchFileItem]

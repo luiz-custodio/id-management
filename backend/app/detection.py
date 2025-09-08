@@ -72,6 +72,16 @@ def detect_type_and_date(
         ym = f"{m_fat.group(1)}-{m_fat.group(2)}"
         return "FAT", ym, 95, f"FAT por nome (YYYY-MM): {ym}"
 
+    # 3.1) FAT: nome começando com YYYY-MM + descritivo contendo 'fatura' ou 'icms'
+    #          (mas NÃO se contiver 'laudo' para evitar conflito com ICMS-LDO)
+    m_fat_desc = re.match(r"^(\d{4})-(\d{2})[\s_-].+\.(pdf|xlsm|xlsx?|docx?|xml)$", nome_raw, re.IGNORECASE)
+    if m_fat_desc:
+        tokens_fat = re.findall(r"[a-z0-9]+", nome_norm)
+        tset_fat = set(tokens_fat)
+        if (("fatura" in tset_fat) or ("faturas" in tset_fat) or ("icms" in tset_fat)) and not (("laudo" in tset_fat) or ("laudos" in tset_fat)):
+            ym = f"{m_fat_desc.group(1)}-{m_fat_desc.group(2)}"
+            return "FAT", ym, 90, f"FAT por YYYY-MM + descritivo (fatura/icms): {ym}"
+
     # 4) CCEE-BOLETOCA (contém boleto)
     if "boleto" in nome:
         ym = _ym_from_ts(last_modified)
@@ -98,10 +108,21 @@ def detect_type_and_date(
         return tipo, ym, 85, f"{motivo} (mês anterior)"
 
     # 6) ICMS (DEVEC / LDO / REC)
+    # Regra específica: se contiver tokens 'icms' e 'laudo' → ICMS-LDO
+    try:
+        _tokens_icms = re.findall(r"[a-z0-9]+", nome_norm)
+        _tset_icms = set(_tokens_icms)
+    except Exception:
+        _tset_icms = set()
+    if ("icms" in _tset_icms) and (("laudo" in _tset_icms) or ("laudos" in _tset_icms)):
+        ym = _ym_from_ts(last_modified, prev=True)
+        return "ICMS-LDO", ym, 90, "ICMS-LDO por tokens 'laudo' + 'icms' (mês anterior)"
+
     if "devec" in nome:
         ym = _ym_from_ts(last_modified, prev=True)
         return "ICMS-DEVEC", ym, 85, "ICMS-DEVEC por palavra-chave (mês anterior)"
-    if "ldo" in nome:
+    # LDO: manter compatibilidade com nomes que tragam 'ICMS-LDO'/'LDO' explícito
+    if re.search(r"\b(icms[-_]?ldo|ldo)\b", nome, re.IGNORECASE):
         ym = _ym_from_ts(last_modified, prev=True)
         return "ICMS-LDO", ym, 85, "ICMS-LDO por palavra-chave (mês anterior)"
     if "rec" in nome:
