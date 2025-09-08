@@ -1076,7 +1076,7 @@ const BatchOrganize: React.FC = () => {
         setConfirmDialog({ isOpen: false, results: [] });
       } else {
         // Exibe erros para diagnóstico
-        const failed = (response.results || []).filter(r => !r.success);
+        const failed = ((response && response.results) ? response.results : []).filter((r: any) => !r.success);
         const firstErr = failed[0]?.error || 'Falha desconhecida';
         toast.error(`Falha: ${ok}/${response.total_files}. Ex.: ${firstErr}`);
         // Mantém o diálogo aberto mostrando os alvos (para revisar caminhos)
