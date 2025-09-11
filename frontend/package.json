@@ -8,6 +8,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:log": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"New-Item -ItemType Directory -Path logs -Force | Out-Null; $ts = Get-Date -Format yyyy-MM-dd_HH-mm-ss; $log = \"logs/dev-$ts.log\"; Write-Host (\"[dev:log] Salvando em: $log\"); npm run dev 2>&1 | Tee-Object -FilePath $log\"",
     "build": "tsc -b && vite build",
     "build:electron": "npm run build",
     "lint": "eslint .",

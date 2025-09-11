@@ -43,6 +43,7 @@ import {
   Search,
   Filter
 } from 'lucide-react';
+import { ClipboardCopy } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, type Empresa, type Unidade } from '@/lib/api';
 
@@ -209,6 +210,108 @@ const BatchOrganize: React.FC = () => {
   const [baseClientPath, setBaseClientPath] = useState<string>('');
   const absPathMapRef = useRef<Map<string, string>>(new Map());
   const fileMapRef = useRef<Map<string, File>>(new Map());
+
+  // Persistência simples do checklist entre recarregamentos (HMR)
+  const SESSION_KEY = 'batchChecklistSessionV1';
+
+  // Restaura sessão anterior (se houver) quando a tela montar e ainda não houver arquivos carregados
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!data || files.length > 0) return;
+
+      if (typeof data.selectedEmpresa === 'string') setSelectedEmpresa(data.selectedEmpresa);
+      if (typeof data.selectedUnidade === 'string') setSelectedUnidade(data.selectedUnidade);
+      if (typeof data.baseClientPath === 'string') setBaseClientPath(data.baseClientPath);
+
+      const restoredDetected: DetectedFile[] = (data.detectedFiles || []).map((d: any) => ({
+        name: d.name,
+        path: d.path,
+        size: d.size || 0,
+        isDetected: true,
+        type: d.type,
+        newName: d.newName || d.name,
+        targetFolder: d.targetFolder,
+        sourceFolder: d.sourceFolder,
+      }));
+      const restoredUndetected: UndetectedFile[] = (data.undetectedFiles || []).map((u: any) => ({
+        name: u.name,
+        path: u.path,
+        size: u.size || 0,
+        isDetected: false,
+        assignedFolder: u.assignedFolder,
+        customName: u.customName,
+        sourceFolder: u.sourceFolder,
+      }));
+      const restoredAll: FileItem[] = [...restoredDetected, ...restoredUndetected];
+
+      setFiles(restoredAll);
+      setDetectedFiles(restoredDetected);
+      setUndetectedFiles(restoredUndetected);
+
+      // Restaura contadores de pastas, se disponíveis; caso contrário recalcula rapidamente
+      const foldersFromSave = Array.isArray(data.folders) ? data.folders : null;
+      if (foldersFromSave) {
+        setFolders(foldersFromSave);
+      } else {
+        setFolders(FOLDER_STRUCTURE.map(folder => ({
+          ...folder,
+          count:
+            restoredDetected.filter(f => (f.targetFolder === folder.path) || f.targetFolder?.startsWith(`${folder.path}/`)).length +
+            restoredUndetected.filter(f => f.assignedFolder === folder.path).length
+        })));
+      }
+
+      // Restaura mapa de caminhos absolutos (necessário para upload sem re-selecionar arquivos)
+      try {
+        const absObj = data.absPathMap || {};
+        const m = new Map<string, string>(Object.entries(absObj));
+        absPathMapRef.current = m;
+      } catch {}
+
+      // Arquivos File não são persistidos; o fluxo de upload já possui fallback via Electron (readFiles)
+      toast.success('Checklist restaurado (sessão anterior)');
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Salva sessão automaticamente quando mudar algo relevante
+  useEffect(() => {
+    try {
+      const detectedToSave = detectedFiles.map(d => ({
+        name: d.name,
+        path: d.path,
+        size: d.size,
+        type: d.type,
+        newName: d.newName,
+        targetFolder: d.targetFolder,
+        sourceFolder: (d as any).sourceFolder,
+      }));
+      const undetectedToSave = undetectedFiles.map(u => ({
+        name: u.name,
+        path: u.path,
+        size: u.size,
+        assignedFolder: u.assignedFolder,
+        customName: u.customName,
+        sourceFolder: (u as any).sourceFolder,
+      }));
+      const absObj: Record<string, string> = {};
+      absPathMapRef.current.forEach((v, k) => { absObj[k] = v; });
+      const payload = {
+        selectedEmpresa,
+        selectedUnidade,
+        baseClientPath,
+        detectedFiles: detectedToSave,
+        undetectedFiles: undetectedToSave,
+        folders,
+        absPathMap: absObj,
+        ts: Date.now(),
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+    } catch {}
+  }, [detectedFiles, undetectedFiles, folders, selectedEmpresa, selectedUnidade, baseClientPath]);
   
   // Estados de interface
   const [loading, setLoading] = useState(false);
@@ -216,6 +319,86 @@ const BatchOrganize: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [draggedFiles, setDraggedFiles] = useState<UndetectedFile[] | null>(null);
   const [selectedManualPaths, setSelectedManualPaths] = useState<Set<string>>(new Set());
+
+  const copyChecklistToClipboard = useCallback(async () => {
+    try {
+      const lines: string[] = [];
+      const now = new Date();
+      lines.push(`Checklist ${now.toISOString()}`);
+      if (selectedEmpresa) {
+        const e = empresas.find(x => x.id.toString() === selectedEmpresa);
+        if (e) lines.push(`Empresa: ${e.nome} (${e.id_empresa})`);
+      }
+      if (selectedUnidade) {
+        const u = unidades.find(x => x.id.toString() === selectedUnidade);
+        if (u) lines.push(`Unidade: ${u.nome} (${u.id_unidade})`);
+      }
+      lines.push('');
+      lines.push(`Automático (${detectedFiles.length})`);
+      detectedFiles.forEach(f => {
+        const changed = f.newName && f.newName !== f.name ? ` => ${f.newName}` : '';
+        const src = (f as any).sourceFolder ? ` [${(f as any).sourceFolder}]` : '';
+        lines.push(`- [AUTO] ${f.name}${changed} -> ${f.targetFolder} [${f.type}]${src}`);
+      });
+      lines.push('');
+      lines.push(`Manual (${undetectedFiles.length})`);
+      undetectedFiles.forEach(f => {
+        const mark = selectedManualPaths.has(f.path) ? 'x' : ' ';
+        const name = f.customName || f.name;
+        const dest = f.assignedFolder || '13 Miscelânea';
+        const src = (f as any).sourceFolder ? ` [${(f as any).sourceFolder}]` : '';
+        lines.push(`- [${mark}] ${name} -> ${dest}${src}`);
+      });
+      const text = lines.join('\n');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast.success('Checklist copiado para a área de transferência');
+    } catch (e) {
+      console.error(e);
+      toast.error('Falha ao copiar checklist');
+    }
+  }, [detectedFiles, undetectedFiles, selectedEmpresa, selectedUnidade, empresas, unidades, selectedManualPaths]);
+
+  // Copiar em formato de duas colunas (TSV) para Excel
+  const copyChecklistToTSV = useCallback(async () => {
+    try {
+      const rows: string[] = [];
+      rows.push(['Arquivo', 'Destino'].join('\t'));
+      detectedFiles.forEach(f => {
+        const name = f.newName || f.name;
+        const dest = f.targetFolder;
+        rows.push([name, dest].join('\t'));
+      });
+      undetectedFiles.forEach(f => {
+        const name = f.customName || f.name;
+        const dest = f.assignedFolder || '13 Miscelânea';
+        rows.push([name, dest].join('\t'));
+      });
+      const tsv = rows.join('\r\n');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tsv);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = tsv;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast.success('Checklist (2 colunas) copiado p/ Excel');
+    } catch (e) {
+      console.error(e);
+      toast.error('Falha ao copiar em colunas');
+    }
+  }, [detectedFiles, undetectedFiles]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   // File inputs (selecionar pasta/arquivos)
   const folderPickerRef = useRef<HTMLInputElement>(null);
@@ -332,11 +515,7 @@ const BatchOrganize: React.FC = () => {
   const processDroppedFiles = useCallback(async (fileList: File[]) => {
     try {
       setLoading(true);
-      
-      // LIMPAR LISTAS EXISTENTES PRIMEIRO
-      setFiles([]);
-      setDetectedFiles([]);
-      setUndetectedFiles([]);
+      // Observação: não limpamos mais as listas existentes; vamos ACRESCENTAR
       
       console.log('🔄 PROCESSANDO ARQUIVOS - Total:', fileList.length);
       
@@ -449,7 +628,7 @@ const BatchOrganize: React.FC = () => {
       }));
 
       // Map rel->abs (se disponível via Electron)
-      const relToAbs = new Map<string, string>();
+      const relToAbs = new Map<string, string>(absPathMapRef.current);
       filteredFileList.forEach((f, idx) => {
         const rel = relPaths[idx] || f.name;
         const abs = (f as any).path;
@@ -457,7 +636,7 @@ const BatchOrganize: React.FC = () => {
       });
       absPathMapRef.current = relToAbs;
       // Map rel->File original (para enviar via multipart quando necessário)
-      const relToFile = new Map<string, File>();
+      const relToFile = new Map<string, File>(fileMapRef.current);
       filteredFileList.forEach((f, idx) => {
         const rel = relPaths[idx] || f.name;
         relToFile.set(rel, f);
@@ -477,9 +656,9 @@ const BatchOrganize: React.FC = () => {
       });
 
       // Converter response para os tipos do frontend
-      const allFiles: FileItem[] = [];
-      const detected: DetectedFile[] = [];
-      const undetected: UndetectedFile[] = [];
+      const newAllFiles: FileItem[] = [];
+      const newDetected: DetectedFile[] = [];
+      const newUndetected: UndetectedFile[] = [];
 
       response.detected_files.forEach(file => {
         const detectedFile: DetectedFile = {
@@ -492,8 +671,8 @@ const BatchOrganize: React.FC = () => {
           targetFolder: file.target_folder!,
           sourceFolder: file.source_folder || undefined,
         };
-        detected.push(detectedFile);
-        allFiles.push(detectedFile);
+        newDetected.push(detectedFile);
+        newAllFiles.push(detectedFile);
       });
 
       response.undetected_files.forEach(file => {
@@ -505,34 +684,65 @@ const BatchOrganize: React.FC = () => {
           assignedFolder: '13 Miscelânea',
           sourceFolder: file.source_folder || undefined,
         };
-        undetected.push(undetectedFile);
-        allFiles.push(undetectedFile);
+        newUndetected.push(undetectedFile);
+        newAllFiles.push(undetectedFile);
+      });
+      // Mesclar com listas existentes, deduplicando por 'path' (novos substituem antigos)
+      setDetectedFiles((prev) => {
+        const byPath = new Map<string, DetectedFile>();
+        prev.forEach(f => byPath.set(f.path, f));
+        newDetected.forEach(f => byPath.set(f.path, f));
+        return Array.from(byPath.values());
+      });
+      setUndetectedFiles((prev) => {
+        const byPath = new Map<string, UndetectedFile>();
+        prev.forEach(f => byPath.set(f.path, f));
+        newUndetected.forEach(f => byPath.set(f.path, f));
+        return Array.from(byPath.values());
+      });
+      // Atualiza lista agregada para contagem/alertas
+      setFiles((prev) => {
+        const byPath = new Map<string, FileItem>();
+        prev.forEach(f => byPath.set(f.path, f));
+        newAllFiles.forEach(f => byPath.set(f.path, f));
+        return Array.from(byPath.values());
       });
 
-      setFiles(allFiles);
-      setDetectedFiles(detected);
-      setUndetectedFiles(undetected);
-      setSelectedManualPaths(new Set());
-      setLastSelectedIndex(null);
+      // Recalcula contadores das pastas após mescla, usando o estado mais recente
+      setFolders((prevFolders) => {
+        // Vamos recalcular com base nos estados que acabamos de atualizar
+        // Usamos setState callback aninhado para garantir consistência
+        let combinedDetected: DetectedFile[] = [];
+        let combinedUndetected: UndetectedFile[] = [];
+        // Hack simples: como setState é assíncrono, derive dos maps que criamos acima
+        // Isto garante que counts reflitam prev + novos
+        const detMap = new Map<string, DetectedFile>();
+        const undetMap = new Map<string, UndetectedFile>();
+        // Recupera do estado anterior
+        detectedFiles.forEach(f => detMap.set(f.path, f));
+        undetectedFiles.forEach(f => undetMap.set(f.path, f));
+        // Aplica novos
+        newDetected.forEach(f => detMap.set(f.path, f));
+        newUndetected.forEach(f => undetMap.set(f.path, f));
+        combinedDetected = Array.from(detMap.values());
+        combinedUndetected = Array.from(undetMap.values());
 
-      // Atualizar contadores das pastas
-      // Conta por pasta de nível superior + manuais pré-atribuídos à Miscelânea
-      const updatedFolders = folders.map(folder => ({
-        ...folder,
-        count:
-          detected.filter(f => (f.targetFolder === folder.path) || f.targetFolder.startsWith(`${folder.path}/`)).length +
-          undetected.filter(f => f.assignedFolder === folder.path).length
-      }));
-      setFolders(updatedFolders);
+        return prevFolders.map(folder => ({
+          ...folder,
+          count:
+            combinedDetected.filter(f => (f.targetFolder === folder.path) || f.targetFolder.startsWith(`${folder.path}/`)).length +
+            combinedUndetected.filter(f => f.assignedFolder === folder.path).length
+        }));
+      });
 
-      toast.success(`${filteredFileList.length} arquivos processados: ${detected.length} detectados automaticamente, ${undetected.length} para organizar manualmente${filteredFileList.length < fileList.length ? ` (${fileList.length - filteredFileList.length} da pasta 6_RELATÓRIOS foram ignorados)` : ''}`);
+      toast.success(`${filteredFileList.length} arquivos adicionados: ${newDetected.length} detectados automaticamente, ${newUndetected.length} para organizar manualmente${filteredFileList.length < fileList.length ? ` (${fileList.length - filteredFileList.length} da pasta 6_RELATÓRIOS foram ignorados)` : ''}`);
     } catch (error) {
       console.error('Erro ao analisar arquivos:', error);
       toast.error('Erro ao analisar arquivos. Verifique se o servidor está funcionando.');
     } finally {
       setLoading(false);
     }
-  }, [selectedEmpresa, selectedUnidade, folders]);
+  }, [selectedEmpresa, selectedUnidade, folders, detectedFiles, undetectedFiles]);
 
   // Configuração do dropzone - ACEITAR PASTAS E ARQUIVOS
   // Extrai arquivos preservando estrutura (reutilizável)
@@ -540,6 +750,65 @@ const BatchOrganize: React.FC = () => {
       try {
         const dt = (event && event.dataTransfer) ? event.dataTransfer : null;
         console.log('[D&D] getFilesFromEvent: has dataTransfer =', !!dt);
+        // Windows/Explorer pode fornecer múltiplos caminhos em text/uri-list mesmo quando files contém 1.
+        // Vamos tentar extrair cedo esses caminhos e priorizá-los se vierem em maior quantidade.
+        try {
+          let earlyUriPaths: string[] = [];
+          if (dt && typeof dt.getData === 'function') {
+            try {
+              const uriList = dt.getData('text/uri-list');
+              if (uriList) {
+                uriList.split(/\r?\n/).forEach((line: string) => {
+                  const s = line.trim();
+                  if (!s || s.startsWith('#')) return;
+                  if (s.startsWith('file:///')) earlyUriPaths.push(decodeURI(s.replace('file:///', '')));
+                });
+              }
+            } catch {}
+            try {
+              if (earlyUriPaths.length === 0) {
+                const txt = dt.getData('text/plain');
+                if (txt) {
+                  txt.split(/\r?\n/).forEach((line: string) => {
+                    const s = line.trim();
+                    if (!s) return;
+                    if (/^[A-Za-z]:\\/.test(s) || s.startsWith('file:///')) {
+                      earlyUriPaths.push(s.startsWith('file:///') ? decodeURI(s.replace('file:///', '')) : s);
+                    }
+                  });
+                }
+              }
+            } catch {}
+          }
+          const dtCount = (dt && dt.files) ? dt.files.length : 0;
+          if (earlyUriPaths.length > dtCount) {
+            console.log('[D&D] Using uri-list/plain paths. count=', earlyUriPaths.length);
+            if ((window as any).electronAPI?.expandDroppedPaths) {
+              try {
+                const expanded = await (window as any).electronAPI.expandDroppedPaths(earlyUriPaths);
+                if (expanded && expanded.length) {
+                  const synthetic: File[] = expanded.map((e: any) => {
+                    const f = new File([], e.name, { lastModified: Math.floor(e.lastModified || Date.now()) });
+                    (f as any).path = e.path;
+                    (f as any).relativePath = e.name;
+                    return f;
+                  });
+                  console.log('[D&D] Expanded via IPC from URI. files=', synthetic.length);
+                  return synthetic;
+                }
+              } catch {}
+            }
+            // Fallback simples: criar objetos File vazios a partir dos caminhos
+            const synthetic: File[] = earlyUriPaths.map((p) => {
+              const name = String(p).replace(/.*[\\\/]/, '');
+              const f = new File([], name || 'file', { lastModified: Date.now() });
+              (f as any).path = p;
+              (f as any).relativePath = name || 'file';
+              return f;
+            });
+            if (synthetic.length) return synthetic;
+          }
+        } catch {}
         const out: File[] = [];
         // Tentativa de determinar uma raiz absoluta a partir do drop
         let absRoot: string | null = null;
@@ -1468,6 +1737,18 @@ const BatchOrganize: React.FC = () => {
                   <X className="w-4 h-4 mr-1" />
                   Limpar Lista
                 </Button>
+
+                {false && (
+                  <Button
+                    onClick={copyChecklistToClipboard}
+                    variant="outline"
+                    size="sm"
+                    className="ml-2 bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/50 text-blue-300"
+                  >
+                    <ClipboardCopy className="w-4 h-4 mr-1" />
+                    Copiar checklist
+                  </Button>
+                )}
               </AlertDescription>
             </Alert>
           )}
@@ -1478,10 +1759,35 @@ const BatchOrganize: React.FC = () => {
       {files.length > 0 && (
         <Card className="bg-white/10 backdrop-blur-sm border-blue-500/30">
           <CardHeader>
-            <CardTitle className="text-white">3. Organizar Arquivos</CardTitle>
-            <CardDescription className="text-blue-200">
-              Revise os arquivos detectados e organize os demais manualmente
-            </CardDescription>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-white">3. Organizar Arquivos</CardTitle>
+                <CardDescription className="text-blue-200">
+                  Revise os arquivos detectados e organize os demais manualmente
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={copyChecklistToClipboard}
+                  variant="outline"
+                  size="sm"
+                  className="bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/50 text-blue-300"
+                >
+                  <ClipboardCopy className="w-4 h-4 mr-1" />
+                  Copiar checklist
+                </Button>
+                <Button
+                  onClick={copyChecklistToTSV}
+                  variant="outline"
+                  size="sm"
+                  className="bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/50 text-blue-300"
+                  title="Copiar como 2 colunas (Excel)"
+                >
+                  <ClipboardCopy className="w-4 h-4 mr-1" />
+                  Copiar p/ Excel
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="auto" className="w-full">
@@ -1610,6 +1916,7 @@ const BatchOrganize: React.FC = () => {
                             key={folder.id}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={() => handleFolderDrop(folder.id)}
+                            data-allow-drop="true"
                             className={`
                               p-3 border rounded transition-colors cursor-pointer
                               ${draggedFiles && draggedFiles.length > 0 

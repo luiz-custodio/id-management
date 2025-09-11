@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Package } from 'lucide-react';
+import { Building2, Package, ClipboardCopy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { api, type Empresa, type Unidade } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   className?: string;
@@ -81,6 +83,59 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     });
   };
 
+  const copySidebarChecklist = async () => {
+    try {
+      const lines: string[] = [];
+      lines.push('Checklist de Filiais');
+      lines.push(new Date().toISOString());
+      lines.push('');
+      unitItems.forEach(u => {
+        const mark = checkedSet.has(u.key) ? 'x' : ' ';
+        lines.push(`- [${mark}] ${u.label}`);
+      });
+      const text = lines.join('\n');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast.success('Checklist copiado');
+    } catch (e) {
+      console.error(e);
+      toast.error('Falha ao copiar checklist');
+    }
+  };
+
+  const copySidebarChecklistTSV = async () => {
+    try {
+      const rows: string[] = [];
+      rows.push(['Unidade', 'Marcado'].join('\t'));
+      unitItems.forEach(u => {
+        rows.push([u.label, checkedSet.has(u.key) ? 'x' : ''].join('\t'));
+      });
+      const tsv = rows.join('\r\n');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(tsv);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = tsv;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast.success('Checklist (2 colunas) copiado');
+    } catch (e) {
+      console.error(e);
+      toast.error('Falha ao copiar checklist');
+    }
+  };
+
   return (
     <div className={cn("flex flex-col w-56 bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm border-r border-blue-800/30", className)}>
       {/* Logo - Compacto */}
@@ -129,6 +184,28 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       {/* Checklist de Filiais */}
       <div className="p-3 border-t border-blue-800/30">
         <div className="text-xs font-medium text-blue-200 mb-2">Checklist de Filiais</div>
+        <div className="mb-2 flex justify-end gap-2">
+          <Button
+            onClick={copySidebarChecklist}
+            variant="outline"
+            size="sm"
+            className="bg-blue-500/20 border-blue-500/40 text-blue-200 hover:bg-blue-500/30"
+            title="Copiar lista com marcações (texto)"
+          >
+            <ClipboardCopy className="h-3.5 w-3.5" />
+            <span className="ml-1">Copiar</span>
+          </Button>
+          <Button
+            onClick={copySidebarChecklistTSV}
+            variant="outline"
+            size="sm"
+            className="bg-blue-500/20 border-blue-500/40 text-blue-200 hover:bg-blue-500/30"
+            title="Copiar em 2 colunas (Excel)"
+          >
+            <ClipboardCopy className="h-3.5 w-3.5" />
+            <span className="ml-1">Excel</span>
+          </Button>
+        </div>
         <div className="text-[11px] text-blue-300/70 mb-2">
           Marque as unidades já processadas
         </div>
