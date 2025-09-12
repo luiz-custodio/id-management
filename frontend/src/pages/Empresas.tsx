@@ -1484,7 +1484,7 @@ const EmpresasPage: React.FC = () => {
                 </button>
                 <button
                   className="text-[11px] text-red-400 hover:text-red-300 disabled:opacity-40"
-                  onClick={() => { setSelectedFiles([]); setArquivosAnalisados([]); }}
+                  onClick={clearAllFiles}
                   disabled={selectedFiles.length === 0}
                   title="Remover todos os arquivos selecionados"
                 >
