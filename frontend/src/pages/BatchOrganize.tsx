@@ -536,8 +536,9 @@ const BatchOrganize: React.FC = () => {
           const pathNorm = path.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
           // Regex robusta para 6_RELATÓRIOS e variações: (^|/|\)0*6[_ -]*relatorios(/|\|$)
           const relatoriosRe = /(^|[\\/])0*6[\s_-]*relatorios([\\/]|$)/i;
+          const resultadosRe = /(^|[\\/])0+[\s_-]*resultados([\\/]|$)/i;
 
-          if (relatoriosRe.test(pathNorm)) {
+          if (relatoriosRe.test(pathNorm) || resultadosRe.test(pathNorm)) {
             console.log('🚫 IGNORANDO (path):', file.name, 'path:', path);
             return false;
           }
@@ -546,14 +547,14 @@ const BatchOrganize: React.FC = () => {
           return true;
         });
       } else {
-        console.log('⚠️ SEM caminho de diretórios — aceitando todos e deixando o backend filtrar 6_RELATÓRIOS');
-        // Fallback mais seguro: não filtra por nome aqui; o backend já ignora 6_RELATÓRIOS
+        console.log('⚠️ SEM caminho de diretórios — aceitando todos e deixando o backend filtrar 6_RELATÓRIOS/0_RESULTADOS');
+        // Fallback mais seguro: não filtra por nome aqui; o backend já ignora 6_RELATÓRIOS/0_RESULTADOS
         filteredFileList = fileList;
       }
       
       if (filteredFileList.length === 0) {
         if (hasPathInfo) {
-          toast.warning('Todos os arquivos foram ignorados por estarem na pasta 6_RELATÓRIOS.');
+          toast.warning('Todos os arquivos foram ignorados por estarem nas pastas 6_RELATÓRIOS/0_RESULTADOS.');
         } else {
           toast.warning('Nenhum arquivo válido foi encontrado no drop.');
         }
@@ -735,7 +736,7 @@ const BatchOrganize: React.FC = () => {
         }));
       });
 
-      toast.success(`${filteredFileList.length} arquivos adicionados: ${newDetected.length} detectados automaticamente, ${newUndetected.length} para organizar manualmente${filteredFileList.length < fileList.length ? ` (${fileList.length - filteredFileList.length} da pasta 6_RELATÓRIOS foram ignorados)` : ''}`);
+      toast.success(`${filteredFileList.length} arquivos adicionados: ${newDetected.length} detectados automaticamente, ${newUndetected.length} para organizar manualmente${filteredFileList.length < fileList.length ? ` (${fileList.length - filteredFileList.length} das pastas 6_RELATÓRIOS/0_RESULTADOS foram ignorados)` : ''}`);
     } catch (error) {
       console.error('Erro ao analisar arquivos:', error);
       toast.error('Erro ao analisar arquivos. Verifique se o servidor está funcionando.');
@@ -1620,7 +1621,7 @@ const BatchOrganize: React.FC = () => {
                   Arraste uma pasta com arquivos aqui
                 </p>
                 <p className="text-sm text-blue-200">
-                  Sistema inteligente: filtra automaticamente arquivos CCEE da pasta "6_RELATÓRIOS"
+                  Sistema inteligente: filtra automaticamente arquivos CCEE das pastas "6_RELATÓRIOS" e "0_RESULTADOS"
                 </p>
                 <p className="text-xs text-blue-300 mt-1">
                   Suporta: todos os tipos de arquivo
@@ -1658,7 +1659,7 @@ const BatchOrganize: React.FC = () => {
                 </span>
                 <Button
                   onClick={() => {
-                    // Filtrar arquivos existentes - remover os da pasta 6_RELATÓRIOS e subpastas
+                    // Filtrar arquivos existentes - remover os das pastas 6_RELATÓRIOS/0_RESULTADOS e subpastas
                     const filteredFiles = files.filter(file => {
                       const pathLower = file.path.toLowerCase();
                       const pathNorm = file.path.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -1670,7 +1671,15 @@ const BatchOrganize: React.FC = () => {
                         pathLower.includes('/6_relatórios/') ||
                         pathLower.includes('\\6_relatórios\\') ||
                         pathNorm.includes('/6_relatorios/') ||
-                        pathNorm.includes('\\6_relatorios\\')
+                        pathNorm.includes('\\6_relatorios\\') ||
+                        pathLower.includes('0_resultados') ||
+                        pathLower.includes('0 resultados') ||
+                        pathNorm.includes('0_resultados') ||
+                        pathNorm.includes('0 resultados') ||
+                        pathLower.includes('/0_resultados/') ||
+                        pathLower.includes('\\0_resultados\\') ||
+                        pathNorm.includes('/0_resultados/') ||
+                        pathNorm.includes('\\0_resultados\\')
                       );
                     });
                     
@@ -1685,7 +1694,15 @@ const BatchOrganize: React.FC = () => {
                         pathLower.includes('/6_relatórios/') ||
                         pathLower.includes('\\6_relatórios\\') ||
                         pathNorm.includes('/6_relatorios/') ||
-                        pathNorm.includes('\\6_relatorios\\')
+                        pathNorm.includes('\\6_relatorios\\') ||
+                        pathLower.includes('0_resultados') ||
+                        pathLower.includes('0 resultados') ||
+                        pathNorm.includes('0_resultados') ||
+                        pathNorm.includes('0 resultados') ||
+                        pathLower.includes('/0_resultados/') ||
+                        pathLower.includes('\\0_resultados\\') ||
+                        pathNorm.includes('/0_resultados/') ||
+                        pathNorm.includes('\\0_resultados\\')
                       );
                     });
                     
@@ -1700,7 +1717,15 @@ const BatchOrganize: React.FC = () => {
                         pathLower.includes('/6_relatórios/') ||
                         pathLower.includes('\\6_relatórios\\') ||
                         pathNorm.includes('/6_relatorios/') ||
-                        pathNorm.includes('\\6_relatorios\\')
+                        pathNorm.includes('\\6_relatorios\\') ||
+                        pathLower.includes('0_resultados') ||
+                        pathLower.includes('0 resultados') ||
+                        pathNorm.includes('0_resultados') ||
+                        pathNorm.includes('0 resultados') ||
+                        pathLower.includes('/0_resultados/') ||
+                        pathLower.includes('\\0_resultados\\') ||
+                        pathNorm.includes('/0_resultados/') ||
+                        pathNorm.includes('\\0_resultados\\')
                       );
                     });
                     
@@ -1710,9 +1735,9 @@ const BatchOrganize: React.FC = () => {
                     
                     const removedCount = files.length - filteredFiles.length;
                     if (removedCount > 0) {
-                      toast.success(`${removedCount} arquivos da pasta 6_RELATÓRIOS foram removidos da lista`);
+                      toast.success(`${removedCount} arquivos das pastas 6_RELATÓRIOS/0_RESULTADOS foram removidos da lista`);
                     } else {
-                      toast.info('Filtragem aplicada - arquivos 6_RELATÓRIOS não encontrados');
+                      toast.info('Filtragem aplicada - arquivos 6_RELATÓRIOS/0_RESULTADOS não encontrados');
                     }
                   }}
                   variant="outline"
@@ -1720,7 +1745,7 @@ const BatchOrganize: React.FC = () => {
                   className="ml-2 bg-orange-500/20 hover:bg-orange-500/30 border-orange-500/50 text-orange-300"
                 >
                   <Filter className="w-4 h-4 mr-1" />
-                  Filtrar 6_RELATÓRIOS
+                  Filtrar 6_RELATÓRIOS/0_RESULTADOS
                 </Button>
                 
                 <Button

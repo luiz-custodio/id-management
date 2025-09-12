@@ -51,7 +51,8 @@ async def analyze_files(request: BatchAnalysisRequest, db: Session = Depends(get
         path_norm = (file_path or "").encode('ascii', 'ignore').decode('ascii').lower()
         # Regex robusta: (^|/|\)0*6[_ -]*relatorios(/|\|$)
         relatorios_re = re.compile(r"(^|[\\/])0*6[\s_-]*relatorios([\\/]|$)")
-        if relatorios_re.search(path_norm):
+        resultados_re = re.compile(r"(^|[\\/])0+[\s_-]*resultados([\\/]|$)")
+        if relatorios_re.search(path_norm) or resultados_re.search(path_norm):
             # Arquivo está na pasta 6_RELATÓRIOS (qualquer variação) ou subpastas: ignorar
             continue
 

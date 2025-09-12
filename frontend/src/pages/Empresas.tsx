@@ -103,6 +103,9 @@ const EmpresasPage: React.FC = () => {
   };
   const [descricao, setDescricao] = useState<string>('');
   const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
+  // Nova: Data automática (baseada nos arquivos selecionados)
+  const [autoData, setAutoData] = useState<boolean>(false);
+  const [autoDataMode, setAutoDataMode] = useState<'mod' | 'mod-1' | 'folder'>('mod');
   const [autoDeteccao, setAutoDeteccao] = useState<boolean>(false);
   const [arquivosAnalisados, setArquivosAnalisados] = useState<Array<{
     file: File;
@@ -198,6 +201,97 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  // Helper: computa AAAA-MM a partir dos arquivos selecionados
+  const computeAutoMesAnoFromFiles = (files: File[], mode: 'mod'|'mod-1'|'folder'): string => {
+    try {
+      if (!files || files.length === 0) return '';
+      if (mode === 'folder') {
+        const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
+        const extractFromPath = (file: File): string => {
+          const anyFile: any = file as any;
+          const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
+          if (!pRaw) return '';
+          const p = pRaw.replace(/\\/g, '/');
+          const segs = p.split('/').filter(Boolean);
+          for (let i = segs.length - 2; i >= 0; i--) {
+            const seg = segs[i];
+            const m = seg.match(folderPattern);
+            if (m) return `${m[1]}-${m[2]}`;
+          }
+          return '';
+        };
+        const values = new Set<string>();
+        for (const f of files) {
+          const v = extractFromPath(f);
+          if (v) values.add(v);
+        }
+        return values.size === 1 ? Array.from(values)[0] : '';
+      } else {
+        // Usa o arquivo mais recente (modificação mais nova) do lote
+        let latest = files[0].lastModified || Date.now();
+        for (const f of files) {
+          if ((f.lastModified || 0) > latest) latest = f.lastModified;
+        }
+        const d = new Date(latest);
+        if (mode === 'mod-1') d.setMonth(d.getMonth() - 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      }
+    } catch {
+      return '';
+    }
+  };
+
+  // Data por arquivo, conforme modo
+  const computeMesAnoForFile = (file: File, mode: 'mod'|'mod-1'|'folder'): string => {
+    try {
+      if (mode === 'folder') {
+        const anyFile: any = file as any;
+        const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
+        if (pRaw) {
+          const p = pRaw.replace(/\\/g, '/');
+          const segs = p.split('/').filter(Boolean);
+          const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
+          for (let i = segs.length - 2; i >= 0; i--) {
+            const seg = segs[i];
+            const m = seg.match(folderPattern);
+            if (m) return `${m[1]}-${m[2]}`;
+          }
+        }
+        return '';
+      }
+      const d = new Date(file.lastModified || Date.now());
+      if (mode === 'mod-1') d.setMonth(d.getMonth() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      return `${y}-${m}`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Mantém mesAno sincronizado quando data automática está habilitada
+  useEffect(() => {
+    if (autoData) {
+      const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+      setMesAno(computed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoData, autoDataMode, selectedFiles]);
+
+  // Quando autoData estiver habilitada para tipos que NÃO exigem data,
+  // garante que o campo opcional apareça e seja preenchido automaticamente
+  useEffect(() => {
+    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+    if (!tipoSelecionado) return;
+    if (!tipoSelecionado.requireDate && autoData) {
+      setMostrarDataOpcional(true);
+      const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+      if (computed) setMesAno(computed);
+    }
+  }, [autoData, autoDataMode, selectedFiles, tipoArquivo]);
+
   // Handler para mudança de tipo de arquivo
   const handleTipoArquivoChange = (valor: string) => {
     setTipoArquivo(valor);
@@ -205,10 +299,16 @@ const EmpresasPage: React.FC = () => {
     setMostrarDataOpcional(false); // Reset do campo opcional
     setArquivosAnalisados([]); // Reset da análise automática
     
-    // Se o tipo requer data e não há data definida, define para o mês anterior
+    // Se o tipo requer data
     const tipoSelecionado = tiposArquivo.find(t => t.value === valor);
-    if (tipoSelecionado?.requireDate && !mesAno) {
-      setMesAno(getCurrentMonth());
+    if (tipoSelecionado?.requireDate) {
+      if (autoData) {
+        const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+        setMesAno(computed);
+      } else if (!mesAno) {
+        // Default manual: mês anterior
+        setMesAno(getCurrentMonth());
+      }
     }
     // Se o tipo não requer data, mantemos o valor atual para persistir a preferência
   };
@@ -218,10 +318,11 @@ const EmpresasPage: React.FC = () => {
     setAutoDeteccao(ativado);
     
     if (ativado) {
-      // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
-      setTipoArquivo('');
-      setCceeSubtipo('');
-      setMostrarDataOpcional(false);
+        // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
+        setTipoArquivo('');
+        setCceeSubtipo('');
+        setMostrarDataOpcional(false);
+        setAutoData(false); // Data automática não se aplica no modo de detecção automática
       
       // Se há arquivos, analisa automaticamente
       if (selectedFiles.length > 0) {
@@ -766,6 +867,12 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  // Limpar todos os arquivos selecionados (e análises automáticas)
+  const clearAllFiles = () => {
+    setSelectedFiles([]);
+    setArquivosAnalisados([]);
+  };
+
   const handleUpload = async () => {
     if (!selectedUnidade || selectedFiles.length === 0) {
       setError('Selecione uma unidade e adicione arquivos');
@@ -816,22 +923,47 @@ const EmpresasPage: React.FC = () => {
       } else {
         // Verifica se data é obrigatória para o tipo selecionado
         const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-        if (tipoSelecionado?.requireDate && !mesAno) {
-          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
-          return;
+        if (tipoSelecionado?.requireDate) {
+          if (autoData) {
+            const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+            if (computed && computed !== mesAno) setMesAno(computed);
+            // Não exigir mesAno quando data automática está ativa; datas serão por arquivo
+          } else if (!mesAno) {
+            setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+            return;
+          }
         }
         
         // Para CCEE, combina tipo e subtipo
         const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
         
         // Modo manual normal
-        preview = await api.previewUpload(
-          parseInt(selectedUnidade), 
-          tipoFinal, 
-          mesAno || null, 
-          descricao || null, 
-          fileList.files
-        );
+        if (autoData) {
+          // Usar caminho AUTO com tipo fixo e data por arquivo
+          const filesWithAnalysis = selectedFiles.map((file) => ({
+            file,
+            tipoDetectado: tipoFinal,
+            dataDetectada: computeMesAnoForFile(file, autoDataMode) || computeMesAnoForFile(file, 'mod')
+          }));
+          // Validação: pelo menos uma data válida
+          if (filesWithAnalysis.some(x => !x.dataDetectada)) {
+            setError(autoDataMode === 'folder' ? 'Alguns arquivos não têm pasta no formato AAAA-MM. Ajuste a base ou a estrutura.' : 'Falha ao calcular data automática para alguns arquivos.');
+            return;
+          }
+          preview = await api.previewUploadAuto(
+            parseInt(selectedUnidade),
+            filesWithAnalysis,
+            descricao || null
+          );
+        } else {
+          preview = await api.previewUpload(
+            parseInt(selectedUnidade), 
+            tipoFinal, 
+            mesAno || null, 
+            descricao || null, 
+            fileList.files
+          );
+        }
       }
       
       setUploadPreview(preview);
@@ -892,9 +1024,15 @@ const EmpresasPage: React.FC = () => {
       } else {
         // Verifica se data é obrigatória para o tipo selecionado
         const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-        if (tipoSelecionado?.requireDate && !mesAno) {
-          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
-          return;
+        if (tipoSelecionado?.requireDate) {
+          if (autoData) {
+            const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+            if (computed && computed !== mesAno) setMesAno(computed);
+            // Não exigir mesAno quando data automática está ativa; datas serão por arquivo
+          } else if (!mesAno) {
+            setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+            return;
+          }
         }
         
         // Para CCEE, combina tipo e subtipo
@@ -904,14 +1042,33 @@ const EmpresasPage: React.FC = () => {
         const fileList = new DataTransfer();
         selectedFiles.forEach(file => fileList.items.add(file));
         
-        result = await api.executarUpload(
-          parseInt(selectedUnidade), 
-          tipoFinal, 
-          mesAno || null, 
-          descricao || null, 
-          fileList.files,
-          conflictStrategy
-        );
+        if (autoData) {
+          // Usar caminho AUTO com tipo fixo e data por arquivo
+          const filesWithAnalysis = selectedFiles.map((file) => ({
+            file,
+            tipoDetectado: tipoFinal,
+            dataDetectada: computeMesAnoForFile(file, autoDataMode) || computeMesAnoForFile(file, 'mod')
+          }));
+          if (filesWithAnalysis.some(x => !x.dataDetectada)) {
+            setError(autoDataMode === 'folder' ? 'Alguns arquivos não têm pasta no formato AAAA-MM. Ajuste a base ou a estrutura.' : 'Falha ao calcular data automática para alguns arquivos.');
+            return;
+          }
+          result = await api.executarUploadAuto(
+            parseInt(selectedUnidade),
+            filesWithAnalysis,
+            descricao || null,
+            conflictStrategy
+          );
+        } else {
+          result = await api.executarUpload(
+            parseInt(selectedUnidade), 
+            tipoFinal, 
+            mesAno || null, 
+            descricao || null, 
+            fileList.files,
+            conflictStrategy
+          );
+        }
       }
       
       // Limpa formulário
@@ -1166,6 +1323,33 @@ const EmpresasPage: React.FC = () => {
           {/* Campo de Mês/Ano condicional */}
           {tipoArquivo && (
             <div className="animate-fade-in-down">
+              {!autoDeteccao && (
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 text-xs text-blue-300">
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3 text-blue-500 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-1"
+                      checked={autoData}
+                      onChange={(e) => setAutoData(e.target.checked)}
+                    />
+                    Data automatica
+                  </label>
+                  {autoData && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">Base:</span>
+                      <select
+                        value={autoDataMode}
+                        onChange={(e) => setAutoDataMode((e.target.value as 'mod'|'mod-1'|'folder'))}
+                        className="text-xs bg-slate-800/70 border border-blue-800/40 rounded px-2 py-1 text-blue-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      >
+                        <option value="mod">Modificacao</option>
+                        <option value="mod-1">Modificacao - 1 mes</option>
+                        <option value="folder">Pasta (AAAA-MM)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
               {(() => {
                 const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
                 const isRequired = tipoSelecionado?.requireDate || false;
@@ -1181,9 +1365,9 @@ const EmpresasPage: React.FC = () => {
                         type="month"
                         value={mesAno}
                         onChange={(e) => setMesAno(e.target.value)}
-                        disabled={autoDeteccao}
+                        disabled={autoDeteccao || autoData}
                         className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm ${
-                          autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+                          (autoDeteccao || autoData) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       />
                       {!mesAno && (
@@ -1228,7 +1412,8 @@ const EmpresasPage: React.FC = () => {
                           type="month"
                           value={mesAno}
                           onChange={(e) => setMesAno(e.target.value)}
-                          className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+                          disabled={autoData}
+                          className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm ${autoData ? 'opacity-50 cursor-not-allowed' : ''}`}
                           placeholder="Opcional"
                         />
                       </div>
@@ -1290,12 +1475,22 @@ const EmpresasPage: React.FC = () => {
           <div className="mt-3 animate-fade-in-down flex-shrink-0">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-medium text-blue-300">Arquivos ({selectedFiles.length})</h3>
-              <button
-                className="text-[11px] text-blue-400 hover:text-blue-300"
-                onClick={() => setMostrarListaArquivos(v => !v)}
-              >
-                {mostrarListaArquivos ? 'Ocultar detalhes' : 'Ver detalhes'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-[11px] text-blue-400 hover:text-blue-300"
+                  onClick={() => setMostrarListaArquivos(v => !v)}
+                >
+                  {mostrarListaArquivos ? 'Ocultar detalhes' : 'Ver detalhes'}
+                </button>
+                <button
+                  className="text-[11px] text-red-400 hover:text-red-300 disabled:opacity-40"
+                  onClick={() => { setSelectedFiles([]); setArquivosAnalisados([]); }}
+                  disabled={selectedFiles.length === 0}
+                  title="Remover todos os arquivos selecionados"
+                >
+                  Limpar tudo
+                </button>
+              </div>
             </div>
             {mostrarListaArquivos && (
               <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
