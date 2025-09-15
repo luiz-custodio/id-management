@@ -1,60 +1,31 @@
-# ID Management System - Electron App
+# ID Management System – Electron App
 
-## Comandos Disponíveis
+## Comandos
 
-### Desenvolvimento
 ```
-npm run electron:dev     # Frontend + Electron em modo dev
-npm run dev              # Apenas frontend (para web)
-```
-
-### Build e Distribuição
-```
-npm run build:electron   # Build completo (web + electron)
-npm run electron:pack    # Empacota para seu sistema
-npm run electron:dist    # Cria instalador
-npm run electron:publish # Publica no GitHub Releases
+npm run electron:dev   # Dev (Vite + Electron)
+npm run electron:pack  # Empacota (pasta dist-electron)
+npm run electron:dist  # Instalador (NSIS)
+npm run electron       # Executa app buildado
 ```
 
-### Produção
-```
-npm run electron         # Roda o app buildado
-```
+## Configuração de Servidor
 
-## Configuração do Servidor
+- Desktop: `%USERPROFILE%\\.id-management-config.json`
 
-Padrão local:
-- URL: http://127.0.0.1:8000
-
-Para clientes em rede, crie no Windows o arquivo:
-`%USERPROFILE%\.id-management-config.json`
-
-Conteúdo de exemplo:
 ```
 { "host": "SEU_IP_DO_SERVIDOR", "port": 8000, "protocol": "http" }
 ```
 
-Substitua `SEU_IP_DO_SERVIDOR` pelo IP do servidor (ex.: 192.168.1.54).
+- Web: `.env` com `VITE_API_BASE=http://localhost:8000`.
 
-## Estrutura de Build
+## Estrutura
 
-```
-dist-electron/           # Electron executável
-└── ID Management System-win32-x64/
-    ├── ID Management System.exe
-    └── resources/app.asar
-
-dist/                    # Frontend buildado
-├── index.html
-└── assets/
-```
+- `electron/main.cjs`: janela, menu, updater, IPC
+- `electron/preload.cjs`: `window.electronAPI` (bridge segura)
+- `dist-electron/ID Management System-win32-x64/ID Management System.exe`: binário
 
 ## Auto-Updates
 
-O app verifica automaticamente por atualizações no GitHub Releases.
+Requer instalador gerado por `electron-builder`. Publicação automática no GitHub Releases via CI.
 
-## Customização
-
-- Ícones: pasta `build/`
-- Configuração: `package.json` → `build`
-- Menu/Janela: `electron/main.cjs`
