@@ -369,41 +369,43 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
     db.add(emp)
     db.flush()  # garante emp.id para a FK das unidades antes do commit
 
-    # Cria todas as unidades sequencialmente
+    unidades_criadas: List[models.Unidade] = []
+
     for i, nome_unidade in enumerate(payload.unidades, 1):
-        id_unidade = f"{i:03d}"  # 001, 002, 003, etc.
+        id_unidade = f"{i:03d}"
         und = models.Unidade(
             id_unidade=id_unidade,
             nome=nome_unidade.strip(),
             empresa_id=emp.id
         )
         db.add(und)
-        db.flush()  # Para garantir que a unidade foi criada antes de criar as pastas
+        db.flush()
+        unidades_criadas.append(und)
 
-        # Cria estrutura de pastas para esta unidade
-        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {novo_id}"
-        
-        # Garante que a pasta base cliente existe
-        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-        
-        # Cria pasta da empresa se não existe
-        empresa_folder.mkdir(exist_ok=True)
-        
-        # Cria pasta da unidade
-        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
-        unidade_folder.mkdir(exist_ok=True)
-        
-        # Cria todas as subpastas padrão
-        for subpasta in SUBPASTAS_PADRAO:
-            subpasta_path = unidade_folder / subpasta
-            subpasta_path.mkdir(exist_ok=True)
-            
-            # Conforme docs/pastas.html, apenas em "04 CCEE - DRI" criamos subpastas por código
-            if subpasta.startswith("04 CCEE - DRI"):
-                for tipo in CCEE_SUBPASTAS:
-                    tipo_folder = subpasta_path / tipo
-                    tipo_folder.mkdir(exist_ok=True)
-    
+    try:
+        append_empresa(emp.nome, novo_id)
+        for und in unidades_criadas:
+            append_filial(
+                nome_empresa=emp.nome,
+                id_empresa=novo_id,
+                nome_unidade=und.nome,
+                id_unidade=und.id_unidade,
+                base_dir=BASE_CLIENTES_PATH,
+            )
+    except ExcelSyncLockedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ExcelSyncError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+    for und in unidades_criadas:
+        montar_estrutura_unidade(
+            str(BASE_CLIENTES_PATH),
+            f"{emp.nome} - {emp.id_empresa}",
+            f"{und.nome} - {und.id_unidade}"
+        )
     db.commit()
     db.refresh(emp)
     return emp
@@ -506,28 +508,35 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
         nome=payload.nome.strip(),
         empresa_id=payload.empresa_id
     )
-    db.add(und); db.commit(); db.refresh(und)
-    
-    # Cria pasta da unidade no filesystem
+    db.add(und)
+    db.flush()
+
     try:
-        # garante base
-        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
-        empresa_folder.mkdir(parents=True, exist_ok=True)
-        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
-        unidade_folder.mkdir(exist_ok=True)
-        
-        # Cria subpastas padrão
-        for subpasta in SUBPASTAS_PADRAO:
-            subpasta_path = unidade_folder / subpasta
-            subpasta_path.mkdir(exist_ok=True)
-            
-            if subpasta.startswith("04 CCEE - DRI"):
-                for tipo in CCEE_SUBPASTAS:
-                    (subpasta_path / tipo).mkdir(exist_ok=True)
+        append_filial(
+            nome_empresa=emp.nome,
+            id_empresa=emp.id_empresa,
+            nome_unidade=und.nome,
+            id_unidade=und.id_unidade,
+            base_dir=BASE_CLIENTES_PATH,
+        )
+    except ExcelSyncLockedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ExcelSyncError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        montar_estrutura_unidade(
+            str(BASE_CLIENTES_PATH),
+            f"{emp.nome} - {emp.id_empresa}",
+            f"{und.nome} - {und.id_unidade}"
+        )
     except Exception as e:
         print(f"Erro ao criar pastas da unidade: {e}")
-    
+
+    db.commit()
+    db.refresh(und)
     return und
 
 @app.get("/unidades", response_model=list[schemas.UnidadeOut])
@@ -1282,6 +1291,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
     
     synced_count = 0
     updated_count = 0
+    empresas_criadas = []  # (nome, id_empresa)
+    unidades_criadas = []  # (nome_empresa, id_empresa, nome_unidade, id_unidade)
     
     try:
         print(f"Sincronizando pasta: {base_path}")
@@ -1316,16 +1327,17 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                 
                 if not existing:
                     print(f"  Criando nova empresa: {nome_empresa}")
-                    # Cria a empresa no banco
                     emp = models.Empresa(nome=nome_empresa, id_empresa=id_empresa)
                     db.add(emp)
                     db.flush()
+                    empresas_criadas.append((emp.nome, emp.id_empresa))
                     synced_count += 1
-                    empresa_id = emp.id
+                    empresa_model = emp
                 else:
                     print(f"  Empresa já existe: {nome_empresa}")
                     updated_count += 1
-                    empresa_id = existing.id
+                    empresa_model = existing
+                empresa_id = empresa_model.id
                 
                 # Verifica subpastas (unidades) e sincroniza
                 unidades_folders = list(folder.iterdir())
@@ -1357,6 +1369,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                                 empresa_id=empresa_id
                             )
                             db.add(und)
+                            db.flush()
+                            unidades_criadas.append((empresa_model.nome, empresa_model.id_empresa, nome_unidade, id_unidade))
                         
                         # Garante que todas as subpastas padrão existem
                         for subpasta in SUBPASTAS_PADRAO:
@@ -1372,6 +1386,25 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
             else:
                 print(f"  Pasta ignorada (formato inválido): {folder_name}")
         
+        # Atualiza planilha mestre antes do commit
+        try:
+            for nome_emp, id_emp in empresas_criadas:
+                append_empresa(nome_emp, id_emp)
+            for nome_emp, id_emp, nome_uni, id_uni in unidades_criadas:
+                append_filial(
+                    nome_empresa=nome_emp,
+                    id_empresa=id_emp,
+                    nome_unidade=nome_uni,
+                    id_unidade=id_uni,
+                    base_dir=BASE_CLIENTES_PATH,
+                )
+        except ExcelSyncLockedError as exc:
+            db.rollback()
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(exc))
+
         # Commit todas as mudanças
         db.commit()
         print(f"Sincronização concluída: {synced_count} novas, {updated_count} existentes")
