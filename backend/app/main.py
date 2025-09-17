@@ -391,13 +391,15 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
     try:
         append_empresa(emp.nome, novo_id)
         for und in unidades_criadas:
-            append_filial(
+            success = append_filial(
                 nome_empresa=emp.nome,
                 id_empresa=novo_id,
                 nome_unidade=und.nome,
                 id_unidade=und.id_unidade,
                 base_dir=BASE_CLIENTES_PATH,
             )
+            if not success:
+                logger.warning("Planilha: filial não registrada automaticamente %s-%s", emp.id_empresa, und.id_unidade)
     except ExcelSyncLockedError as exc:
         db.rollback()
         raise HTTPException(status_code=503, detail=str(exc))
