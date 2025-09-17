@@ -134,15 +134,38 @@ export type FolderStructure = {
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const BASE = await apiBase();
-  const r = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!r.ok) {
-    const msg = await r.text().catch(() => "");
-    throw new Error(`${r.status} ${r.statusText}${msg ? ` - ${msg}` : ""}`);
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${url}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message.includes('Failed to fetch')
+      ? 'Não foi possível comunicar com o servidor. Verifique se a API está ativa e se a planilha mestre está fechada.'
+      : (error instanceof Error ? error.message : 'Falha de rede');
+    throw new Error(message);
   }
-  return r.json();
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let detail = raw;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'string') {
+          detail = parsed;
+        } else if (parsed && typeof parsed.detail === 'string') {
+          detail = parsed.detail;
+        }
+      } catch {
+        detail = raw;
+      }
+    }
+    const baseMessage = `${response.status} ${response.statusText}`;
+    throw new Error(detail ? `${baseMessage} - ${detail}` : baseMessage);
+  }
+  return response.json();
 }
 
 export const api = {

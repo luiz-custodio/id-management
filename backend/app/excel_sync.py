@@ -1,4 +1,4 @@
-"""Utilities to keep the external spreadsheet (Planilha Mestre.xlsx) in sync."""
+"""Utilities to synchronize newly created empresas/unidades with Planilha Mestre.xlsx."""
 from __future__ import annotations
 
 import logging
@@ -21,15 +21,15 @@ DEFAULT_FILIAIS_SHEET = "Filiais"
 
 
 class ExcelSyncError(RuntimeError):
-    """Base class for sync issues with the spreadsheet."""
+    """Base class for spreadsheet sync errors."""
 
 
 class ExcelSyncConfigError(ExcelSyncError):
-    """Raised when the path to the spreadsheet is not configured."""
+    """Raised when the spreadsheet path is not configured."""
 
 
 class ExcelSyncLockedError(ExcelSyncError):
-    """Raised when the spreadsheet cannot be opened/saved because Excel has it locked."""
+    """Raised when the spreadsheet is open/locked in Excel."""
 
 
 def _excel_path() -> Path:
@@ -40,21 +40,23 @@ def _excel_path() -> Path:
         )
     path = Path(path_str)
     if not path.exists():
-        raise ExcelSyncError(f"Configured spreadsheet not found: {path}")
+        raise ExcelSyncError(f"Spreadsheet not found: {path}")
     return path
 
 
 @contextmanager
 def _open_workbook() -> Iterator[tuple[Path, "Workbook"]]:
+    from openpyxl.workbook import Workbook  # local import to avoid heavy dependency globally
+
     path = _excel_path()
     try:
         workbook = load_workbook(path)
-    except PermissionError as exc:  # Excel aberto ou arquivo bloqueado
+    except PermissionError as exc:
         raise ExcelSyncLockedError(
-            "Unable to open the spreadsheet. Close it in Excel and try again."
+            "Não foi possível acessar a planilha. Feche o arquivo no Excel e tente novamente."
         ) from exc
     except OSError as exc:
-        raise ExcelSyncError(f"Failed to open spreadsheet: {exc}") from exc
+        raise ExcelSyncError(f"Falha ao abrir a planilha: {exc}") from exc
 
     try:
         yield path, workbook
@@ -62,10 +64,10 @@ def _open_workbook() -> Iterator[tuple[Path, "Workbook"]]:
             workbook.save(path)
         except PermissionError as exc:
             raise ExcelSyncLockedError(
-                "Unable to save the spreadsheet. Close it in Excel and try again."
+                "Não foi possível salvar a planilha. Feche o arquivo no Excel e tente novamente."
             ) from exc
         except OSError as exc:
-            raise ExcelSyncError(f"Failed to save spreadsheet: {exc}") from exc
+            raise ExcelSyncError(f"Falha ao salvar a planilha: {exc}") from exc
     finally:
         try:
             workbook.close()
@@ -80,7 +82,7 @@ def _normalize_id(value: object | None, *, width: int) -> str:
         text = str(value).strip()
     except Exception:
         text = str(value)
-    if text.endswith(".0") and text[:-2].isdigit():  # comum ao ler Excel
+    if text.endswith(".0") and text[:-2].isdigit():
         text = text[:-2]
     digits = "".join(ch for ch in text if ch.isdigit())
     if digits:
@@ -94,8 +96,8 @@ def _normalize_id(value: object | None, *, width: int) -> str:
         return text.zfill(width)
 
 
-def _sheet_name(sheet_env: str, default: str) -> str:
-    return os.getenv(sheet_env, default)
+def _sheet_name(env_name: str, default: str) -> str:
+    return os.getenv(env_name, default)
 
 
 def _empresa_exists(sheet: Worksheet, id_empresa: str) -> bool:
@@ -122,15 +124,21 @@ def _filial_exists(sheet: Worksheet, id_empresa: str, id_unidade: str) -> bool:
 def append_empresa(nome: str, id_empresa: str) -> bool:
     """Append a row in the Empresas sheet. Returns True if a new row was added."""
     sheet_name = _sheet_name(EMPRESAS_SHEET_ENV, DEFAULT_EMPRESAS_SHEET)
-    with _open_workbook() as (path, workbook):
-        if sheet_name not in workbook.sheetnames:
-            raise ExcelSyncError(f"Spreadsheet '{path}' does not have sheet '{sheet_name}'")
-        sheet = workbook[sheet_name]
-        normalized_id = _normalize_id(id_empresa, width=4)
-        if _empresa_exists(sheet, normalized_id):
-            return False
-        sheet.append([nome, None, normalized_id])
-        return True
+    try:
+        with _open_workbook() as (path, workbook):
+            if sheet_name not in workbook.sheetnames:
+                raise ExcelSyncError(
+                    f"Spreadsheet '{path}' does not have sheet '{sheet_name}'"
+                )
+            sheet = workbook[sheet_name]
+            normalized_id = _normalize_id(id_empresa, width=4)
+            if _empresa_exists(sheet, normalized_id):
+                return False
+            sheet.append([nome, None, normalized_id])
+            return True
+    except ExcelSyncConfigError:
+        logger.info("EXCEL_MASTER_PATH not configured; skipping Empresas sync")
+        return False
 
 
 def append_filial(
@@ -143,36 +151,42 @@ def append_filial(
 ) -> bool:
     """Append a row in the Filiais sheet. Returns True if a new row was added."""
     sheet_name = _sheet_name(FILIAIS_SHEET_ENV, DEFAULT_FILIAIS_SHEET)
-    with _open_workbook() as (path, workbook):
-        if sheet_name not in workbook.sheetnames:
-            raise ExcelSyncError(f"Spreadsheet '{path}' does not have sheet '{sheet_name}'")
-        sheet = workbook[sheet_name]
-
-        normalized_emp = _normalize_id(id_empresa, width=4)
-        normalized_unit = _normalize_id(id_unidade, width=3)
-        if _filial_exists(sheet, normalized_emp, normalized_unit):
-            return False
-
-        code = f"E-{normalized_emp}-F-{normalized_unit}"
-        path_value = ""
-        if base_dir is not None:
-            try:
-                full_path = (
-                    Path(base_dir)
-                    / f"{nome_empresa} - {normalized_emp}"
-                    / f"{nome_unidade} - {normalized_unit}"
+    try:
+        with _open_workbook() as (path, workbook):
+            if sheet_name not in workbook.sheetnames:
+                raise ExcelSyncError(
+                    f"Spreadsheet '{path}' does not have sheet '{sheet_name}'"
                 )
-                path_value = os.path.normpath(str(full_path))
-            except Exception as exc:
-                logger.warning("Failed to build PATH for filial entry: %s", exc)
-                path_value = ""
 
-        sheet.append([
-            code,
-            normalized_emp,
-            normalized_unit,
-            nome_empresa,
-            nome_unidade,
-            path_value,
-        ])
-        return True
+            sheet = workbook[sheet_name]
+            normalized_emp = _normalize_id(id_empresa, width=4)
+            normalized_unit = _normalize_id(id_unidade, width=3)
+            if _filial_exists(sheet, normalized_emp, normalized_unit):
+                return False
+
+            code = f"E-{normalized_emp}-F-{normalized_unit}"
+            path_value = ""
+            if base_dir is not None:
+                try:
+                    full_path = (
+                        Path(base_dir)
+                        / f"{nome_empresa} - {normalized_emp}"
+                        / f"{nome_unidade} - {normalized_unit}"
+                    )
+                    path_value = os.path.normpath(str(full_path))
+                except Exception as exc:
+                    logger.warning("Failed to build PATH for filial entry: %s", exc)
+                    path_value = ""
+
+            sheet.append([
+                code,
+                normalized_emp,
+                normalized_unit,
+                nome_empresa,
+                nome_unidade,
+                path_value,
+            ])
+            return True
+    except ExcelSyncConfigError:
+        logger.info("EXCEL_MASTER_PATH not configured; skipping Filiais sync")
+        return False

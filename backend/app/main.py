@@ -11,6 +11,12 @@ from .organizer import preview_moves, apply_moves
 from .routers import batch_organize
 from .routers import batch_debug
 from .routers import batch_simple
+from .excel_sync import (
+    ExcelSyncError,
+    ExcelSyncLockedError,
+    append_empresa,
+    append_filial,
+)
 import os
 import re
 import shutil
