@@ -21,7 +21,7 @@ SUBPASTAS_NUMERADAS = [
 # Subcódigos CCEE usados na pasta 04 e também replicados na 09 (Modelagem)
 # Mantidos conforme documentação oficial do projeto
 CCEE_SUBCODIGOS = [
-    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001",
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCAP001",
     "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
 ]
 

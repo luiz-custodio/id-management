@@ -134,9 +134,9 @@ def _collect_ids(sheet_name: str, *, column: int, width: int) -> Set[str]:
             pass
 
 
-
 def _sheet_name(env_name: str, default: str) -> str:
     return os.getenv(env_name, default)
+
 
 def _empresa_exists(sheet: Worksheet, id_empresa: str) -> bool:
     normalized_id = _normalize_id(id_empresa, width=4)
@@ -163,6 +163,18 @@ def _filial_exists(sheet: Worksheet, id_empresa: str, id_unidade: str) -> bool:
             wb.close()
         except Exception:
             pass
+
+
+def _path_str(base_dir: Optional[Path], nome_empresa: str, id_empresa: str, nome_unidade: str, id_unidade: str) -> str:
+    if base_dir is None:
+        return ""
+    try:
+        base = Path(base_dir)
+        full = base / f"{nome_empresa} - {id_empresa}" / f"{nome_unidade} - {id_unidade}"
+        return os.path.normpath(str(full))
+    except Exception as exc:
+        logger.warning("Falha ao montar PATH: %s", exc)
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -205,22 +217,9 @@ def append_filial(
 
             normalized_emp = _normalize_id(id_empresa, width=4)
             normalized_unit = _normalize_id(id_unidade, width=3)
-            code = f"E-{normalized_emp}-F-{normalized_unit}"
-            path_value = ""
-            if base_dir is not None:
-                try:
-                    full_path = (
-                        Path(base_dir)
-                        / f"{nome_empresa} - {normalized_emp}"
-                        / f"{nome_unidade} - {normalized_unit}"
-                    )
-                    path_value = os.path.normpath(str(full_path))
-                except Exception as exc:
-                    logger.warning("Falha ao montar PATH da filial: %s", exc)
-                    path_value = ""
-
+            path_value = _path_str(base_dir, nome_empresa, normalized_emp, nome_unidade, normalized_unit)
             sheet.append([
-                code,
+                f"E-{normalized_emp}-F-{normalized_unit}",
                 normalized_emp,
                 normalized_unit,
                 nome_empresa,
@@ -231,3 +230,80 @@ def append_filial(
     except ExcelSyncConfigError:
         logger.info("EXCEL_MASTER_PATH não configurada; ignorando sync de Filiais")
         return False
+
+
+def rename_empresa(id_empresa: str, novo_nome: str, *, base_dir: Optional[Path] = None) -> bool:
+    sheet_emp = _sheet_name(EMPRESAS_SHEET_ENV, DEFAULT_EMPRESAS_SHEET)
+    sheet_fil = _sheet_name(FILIAIS_SHEET_ENV, DEFAULT_FILIAIS_SHEET)
+    updated = False
+    normalized_emp = _normalize_id(id_empresa, width=4)
+
+    with _open_workbook() as (path, workbook):
+        if sheet_emp not in workbook.sheetnames:
+            raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_emp}'")
+        empresas_ws = workbook[sheet_emp]
+        for row in empresas_ws.iter_rows(min_row=2):
+            if len(row) < 3:
+                continue
+            if _normalize_id(row[2].value, width=4) == normalized_emp:
+                row[0].value = novo_nome
+                if len(row) > 3:
+                    row[3].value = novo_nome
+                updated = True
+                break
+
+        if sheet_fil not in workbook.sheetnames:
+            return updated
+
+        filiais_ws = workbook[sheet_fil]
+        for row in filiais_ws.iter_rows(min_row=2):
+            if len(row) < 4:
+                continue
+            emp_id_cell = _normalize_id(row[1].value if len(row) > 1 else None, width=4)
+            if emp_id_cell != normalized_emp:
+                continue
+            if len(row) > 3:
+                row[3].value = novo_nome
+            nome_unidade = row[4].value if len(row) > 4 and row[4].value else ""
+            unidade_id = _normalize_id(row[2].value if len(row) > 2 else None, width=3)
+            path = _path_str(base_dir, novo_nome, normalized_emp, nome_unidade, unidade_id)
+            if len(row) > 5:
+                row[5].value = path
+            updated = True
+    return updated
+
+
+def rename_filial(
+    id_empresa: str,
+    id_unidade: str,
+    novo_nome_unidade: str,
+    *,
+    nome_empresa: Optional[str] = None,
+    base_dir: Optional[Path] = None,
+) -> bool:
+    sheet_fil = _sheet_name(FILIAIS_SHEET_ENV, DEFAULT_FILIAIS_SHEET)
+    normalized_emp = _normalize_id(id_empresa, width=4)
+    normalized_unit = _normalize_id(id_unidade, width=3)
+
+    with _open_workbook() as (path, workbook):
+        if sheet_fil not in workbook.sheetnames:
+            raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_fil}'")
+        filiais_ws = workbook[sheet_fil]
+        found = False
+        for row in filiais_ws.iter_rows(min_row=2):
+            if len(row) < 4:
+                continue
+            emp_id = _normalize_id(row[1].value if len(row) > 1 else None, width=4)
+            unit_id = _normalize_id(row[2].value if len(row) > 2 else None, width=3)
+            if emp_id == normalized_emp and unit_id == normalized_unit:
+                if len(row) > 4:
+                    row[4].value = novo_nome_unidade
+                if nome_empresa and len(row) > 3:
+                    row[3].value = nome_empresa
+                empresa_nome = nome_empresa or (row[3].value if len(row) > 3 else "") or nome_empresa or ""
+                path_value = _path_str(base_dir, empresa_nome, normalized_emp, novo_nome_unidade, normalized_unit)
+                if len(row) > 5:
+                    row[5].value = path_value
+                found = True
+                break
+        return found

@@ -16,6 +16,8 @@ from .excel_sync import (
     ExcelSyncLockedError,
     append_empresa,
     append_filial,
+    rename_empresa,
+    rename_filial,
 )
 import os
 import re
@@ -145,7 +147,7 @@ TIPO_PARA_PASTA = {
 
 # Subpastas específicas para CCEE (cada tipo tem sua pasta)
 CCEE_SUBPASTAS = [
-    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001", 
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCAP001", 
     "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
 ]
 
@@ -443,14 +445,33 @@ def renomear_empresa(empresa_pk: int, payload: schemas.EmpresaUpdate, db: Sessio
     if novo_nome != emp.nome:
         old_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
         new_path = BASE_CLIENTES_PATH / f"{novo_nome} - {emp.id_empresa}"
+        folder_renamed = False
         try:
             BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-            # Renomeia a pasta da empresa se existir e o destino ainda não existir
-            if old_path.exists() and not new_path.exists():
+            if old_path.exists() and old_path != new_path and not new_path.exists():
                 old_path.rename(new_path)
+                folder_renamed = True
         except Exception as e:
-            # Não bloqueia o rename no banco; apenas loga o erro
-            print(f"Erro ao renomear pasta da empresa: {e}")
+            logger.warning("Falha ao renomear pasta da empresa: %s", e)
+
+        try:
+            updated = rename_empresa(emp.id_empresa, novo_nome, base_dir=BASE_CLIENTES_PATH)
+            if not updated:
+                logger.warning("Planilha: empresa %s não localizada para renomear", emp.id_empresa)
+        except ExcelSyncLockedError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da empresa após erro: %s", revert_exc)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da empresa após erro: %s", revert_exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
         emp.nome = novo_nome
         db.add(emp)
@@ -614,16 +635,15 @@ def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Sessio
 
     if novo_nome != und.nome:
         emp = db.get(models.Empresa, und.empresa_id)
+        old_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}" / f"{und.nome} - {und.id_unidade}"
+        new_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}" / f"{novo_nome} - {und.id_unidade}"
+        folder_renamed = False
         try:
             BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-            empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
-            old_path = empresa_folder / f"{und.nome} - {und.id_unidade}"
-            new_path = empresa_folder / f"{novo_nome} - {und.id_unidade}"
-
-            if old_path.exists() and not new_path.exists():
+            if old_path.exists() and old_path != new_path and not new_path.exists():
                 old_path.rename(new_path)
+                folder_renamed = True
             elif (not old_path.exists()) and (not new_path.exists()):
-                # Se não existir nenhuma pasta, cria estrutura básica
                 new_path.mkdir(parents=True, exist_ok=True)
                 for subpasta in SUBPASTAS_PADRAO:
                     sp = new_path / subpasta
@@ -632,7 +652,32 @@ def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Sessio
                         for tipo in CCEE_SUBPASTAS:
                             (sp / tipo).mkdir(exist_ok=True)
         except Exception as e:
-            print(f"Erro ao ajustar pastas da unidade: {e}")
+            logger.warning("Erro ao ajustar pastas da unidade: %s", e)
+
+        try:
+            updated = rename_filial(
+                id_empresa=emp.id_empresa,
+                id_unidade=und.id_unidade,
+                novo_nome_unidade=novo_nome,
+                nome_empresa=emp.nome,
+                base_dir=BASE_CLIENTES_PATH,
+            )
+            if not updated:
+                logger.warning("Planilha: filial %s-%s não localizada para renomear", emp.id_empresa, und.id_unidade)
+        except ExcelSyncLockedError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da filial após erro: %s", revert_exc)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da filial após erro: %s", revert_exc)
+            raise HTTPException(status_code=500, detail=str(exc))
 
         und.nome = novo_nome
         db.add(und)

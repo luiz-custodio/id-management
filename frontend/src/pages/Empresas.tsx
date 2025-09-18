@@ -179,7 +179,7 @@ const EmpresasPage: React.FC = () => {
     { value: 'CFZ004', label: 'CFZ004' },
     { value: 'GFN001', label: 'GFN001' },
     { value: 'LFN001', label: 'LFN001' },
-    { value: 'LFRCA001', label: 'LFRCA001' },
+    { value: 'LFRCAP001', label: 'LFRCAP001' },
     { value: 'LFRES001', label: 'LFRES001' },
     { value: 'PEN001', label: 'PEN001' },
     { value: 'SUM001', label: 'SUM001' },

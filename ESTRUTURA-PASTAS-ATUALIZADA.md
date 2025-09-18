@@ -97,7 +97,7 @@ cliente/
   - `DOC-COM-AAAA-MM-XXX.ext` (Comunicados)
   - `DOC-LIC-AAAA.ext` (Licenças)
 - CCEE – DRI: `CCEE-{CODIGO}-AAAA-MM[-Vn][-X].ext`
-  - Códigos: CFZ003, CFZ004, GFN001, LFN001, LFRCA001, LFRES001, PEN001, SUM001, BOLETOCA, ND
+  - Códigos: CFZ003, CFZ004, GFN001, LFN001, LFRCAP001, LFRES001, PEN001, SUM001, BOLETOCA, ND
 
 ## Regras Importantes
 
