@@ -4,9 +4,10 @@ export const useSidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('idms.sidebarCollapsed');
-      return saved === 'true';
+      // Se não há preferência salva, padrão é retraído (true)
+      return saved !== null ? saved === 'true' : true;
     } catch {
-      return false;
+      return true; // Padrão retraído
     }
   });
 

@@ -8,29 +8,32 @@ A sidebar do sistema agora possui funcionalidade retrátil, permitindo ao usuár
 
 ### Estados da Sidebar
 
-**Modo Expandido (Padrão)**
-- Largura: 224px (w-56)
-- Exibe logo completo com texto
-- Mostra nomes e descrições completas dos itens de navegação
-- Checklist de filiais visível e funcional
-- Footer com informações completas
-
-**Modo Colapsado**
+**Modo Colapsado (Padrão)**
 - Largura: 64px (w-16)  
 - Logo apenas com ícone "ID"
 - Navegação apenas com ícones
 - Tooltips informativos ao passar o mouse
 - Checklist oculto para economizar espaço
 - Footer simplificado
+- **Botão de toggle centralizado abaixo do logo**
+
+**Modo Expandido**
+- Largura: 224px (w-56)
+- Exibe logo completo com texto
+- Mostra nomes e descrições completas dos itens de navegação
+- Checklist de filiais visível e funcional
+- Footer com informações completas
+- **Botão de toggle centralizado abaixo do logo**
 
 ### Interação
 
-- **Botão de Toggle**: Localizado no canto superior direito do cabeçalho da sidebar
+- **Botão de Toggle**: Centralizado abaixo do logo no cabeçalho da sidebar
 - **Ícones**: 
   - `Menu` (☰) quando colapsado - clique para expandir
   - `X` (✕) quando expandido - clique para recolher
 - **Tooltips**: Quando colapsado, ao passar o mouse sobre os itens de navegação, aparecem tooltips informativos
 - **Persistência**: O estado (expandido/colapsado) é salvo no localStorage do navegador
+- **Padrão**: A sidebar inicia **retraída** por padrão para maximizar espaço de trabalho
 
 ## 🔧 Implementação Técnica
 
