@@ -64,17 +64,108 @@ export type UploadResponse = {
   message: string;
 };
 
+// Tipos para organização em lote
+export type BatchFileItem = {
+  name: string;
+  path: string;
+  size: number;
+  is_detected: boolean;
+  detected_type?: string;
+  target_folder?: string;
+  new_name?: string;
+  source_folder?: string;
+};
+
+export type BatchAnalysisRequest = {
+  empresa_id: number;
+  unidade_id: number;
+  files: Array<{
+    name: string;
+    path: string;
+    size: number;
+  }>;
+};
+
+export type BatchAnalysisResponse = {
+  detected_files: BatchFileItem[];
+  undetected_files: BatchFileItem[];
+  empresa_info: string;
+  unidade_info: string;
+  base_path: string;
+};
+
+export type BatchProcessingOperation = {
+  original_name: string;
+  new_name: string;
+  source_path: string;
+  target_path: string;
+  folder_name: string;
+};
+
+export type BatchProcessRequest = {
+  empresa_id: number;
+  unidade_id: number;
+  operations: BatchProcessingOperation[];
+};
+
+export type BatchProcessingResult = {
+  original_name: string;
+  new_name: string;
+  target_path: string;
+  success: boolean;
+  error?: string;
+};
+
+export type BatchProcessResponse = {
+  results: BatchProcessingResult[];
+  total_files: number;
+  successful_files: number;
+  empresa_info: string;
+  unidade_info: string;
+};
+
+export type FolderStructure = {
+  id: string;
+  name: string;
+  path: string;
+  description: string;
+  types: string[];
+};
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const BASE = await apiBase();
-  const r = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (!r.ok) {
-    const msg = await r.text().catch(() => "");
-    throw new Error(`${r.status} ${r.statusText}${msg ? ` - ${msg}` : ""}`);
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${url}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message.includes('Failed to fetch')
+      ? 'Não foi possível comunicar com o servidor. Verifique se a API está ativa e se a planilha mestre está fechada.'
+      : (error instanceof Error ? error.message : 'Falha de rede');
+    throw new Error(message);
   }
-  return r.json();
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let detail = raw;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'string') {
+          detail = parsed;
+        } else if (parsed && typeof parsed.detail === 'string') {
+          detail = parsed.detail;
+        }
+      } catch {
+        detail = raw;
+      }
+    }
+    const baseMessage = `${response.status} ${response.statusText}`;
+    throw new Error(detail ? `${baseMessage} - ${detail}` : baseMessage);
+  }
+  return response.json();
 }
 
 export const api = {
@@ -87,6 +178,12 @@ export const api = {
       body: JSON.stringify({ nome, unidades }),
     });
   },
+  renomearEmpresa(empresaId: number, nome: string) {
+    return http<Empresa>(`/empresas/${empresaId}`, {
+      method: "PUT",
+      body: JSON.stringify({ nome }),
+    });
+  },
   listarUnidades(empresaId: number) {
     return http<Unidade[]>(`/unidades?empresa_id=${empresaId}`);
   },
@@ -94,6 +191,12 @@ export const api = {
     return http<Unidade>("/unidades", {
       method: "POST",
       body: JSON.stringify({ empresa_id: empresaId, nome }),
+    });
+  },
+  renomearUnidade(unidadeId: number, nome: string) {
+    return http<Unidade>(`/unidades/${unidadeId}`, {
+      method: "PUT",
+      body: JSON.stringify({ nome }),
     });
   },
   async excluirUnidade(unidadeId: number): Promise<void> {
@@ -260,12 +363,13 @@ export const api = {
 
     return response.json();
   },
-  async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList): Promise<UploadResponse> {
+  async executarUpload(unidadeId: number, tipoArquivo: string, mesAno: string | null, descricao: string | null, files: FileList, conflictStrategy?: 'overwrite'|'version'|'skip'): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('unidade_id', unidadeId.toString());
     formData.append('tipo_arquivo', tipoArquivo);
     if (mesAno) formData.append('mes_ano', mesAno);
     if (descricao) formData.append('descricao', descricao);
+    if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
     
     for (let i = 0; i < files.length; i++) {
       formData.append('files', files[i]);
@@ -284,11 +388,12 @@ export const api = {
 
     return response.json();
   },
-  async executarUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null): Promise<UploadResponse> {
+  async executarUploadAuto(unidadeId: number, filesWithAnalysis: Array<{file: File, tipoDetectado: string, dataDetectada: string}>, descricao: string | null, conflictStrategy?: 'overwrite'|'version'|'skip'): Promise<UploadResponse> {
     const formData = new FormData();
     formData.append('unidade_id', unidadeId.toString());
     formData.append('modo', 'AUTO');
     if (descricao) formData.append('descricao', descricao);
+    if (conflictStrategy) formData.append('conflict_strategy', conflictStrategy);
     
     // Envia arquivo e metadados de análise
     filesWithAnalysis.forEach((item, index) => {
@@ -320,5 +425,81 @@ export const api = {
     }
 
     return response.json();
+  },
+
+  // ==========================================
+  // APIS PARA ORGANIZAÇÃO EM LOTE
+  // ==========================================
+  async batchAnalyzeFiles(request: BatchAnalysisRequest): Promise<BatchAnalysisResponse> {
+    return http<BatchAnalysisResponse>("/batch/analyze", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+  
+  async batchProcessFiles(request: BatchProcessRequest): Promise<BatchProcessResponse> {
+    return http<BatchProcessResponse>("/batch/process", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  },
+
+  async batchProcessFilesUpload(
+    empresaId: number,
+    unidadeId: number,
+    fileTargets: Array<{ original_name: string; new_name: string; target_path: string }>,
+    files: File[],
+    opts?: { onProgress?: (percent: number) => void; conflictStrategy?: 'overwrite'|'version'|'skip' }
+  ): Promise<BatchProcessResponse> {
+    const form = new FormData();
+    form.append('empresa_id', String(empresaId));
+    form.append('unidade_id', String(unidadeId));
+    form.append('file_targets_json', JSON.stringify(fileTargets));
+    if (opts?.conflictStrategy) form.append('conflict_strategy', opts.conflictStrategy);
+    files.forEach((f) => form.append('files', f));
+    const BASE = await apiBase();
+
+    // Se foi pedido progresso, usa XHR para obter upload progress
+    if (opts?.onProgress) {
+      return new Promise((resolve, reject) => {
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', `${BASE}/batch/process-upload`);
+          xhr.onload = () => {
+            try {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(JSON.parse(xhr.responseText));
+              } else {
+                reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          };
+          xhr.onerror = () => reject(new Error('Falha de rede no upload'));
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const percent = Math.round((evt.loaded / evt.total) * 100);
+              opts.onProgress?.(percent);
+            }
+          };
+          xhr.send(form);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }
+
+    // Sem progresso, usa fetch
+    const r = await fetch(`${BASE}/batch/process-upload`, { method: 'POST', body: form });
+    if (!r.ok) {
+      const msg = await r.text().catch(() => '');
+      throw new Error(msg || 'Erro ao processar upload em lote');
+    }
+    return r.json();
+  },
+  
+  async batchGetFolders(): Promise<{ folders: FolderStructure[] }> {
+    return http<{ folders: FolderStructure[] }>("/batch/folders");
   }
 };

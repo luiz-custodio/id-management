@@ -30,6 +30,12 @@ def main(argv: list[str] | None = None) -> int:
     from backend.app import models
     from backend.app.id_utils import next_id_empresa, next_id_unidade
     from backend.app.fs_utils import montar_estrutura_unidade
+    from backend.app.excel_sync import (
+        ExcelSyncError,
+        ExcelSyncLockedError,
+        append_empresa,
+        append_filial,
+    )
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", required=True, help="Caminho completo do Excel")
@@ -57,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
     df = df.rename(columns=col_map)
 
     db = SessionLocal()
+    base_dir = Path(os.getenv("BASE_DIR", str(_repo_root() / "cliente")))
+    base_dir_str = str(base_dir)
     try:
         # Agrupa por agente
         for agente, grp in df.groupby("agente"):
@@ -70,6 +78,16 @@ def main(argv: list[str] | None = None) -> int:
                 emp = models.Empresa(id_empresa=next_id_empresa(db), nome=agente)
                 db.add(emp)
                 db.flush()
+                try:
+                    append_empresa(emp.nome, emp.id_empresa)
+                except ExcelSyncLockedError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Planilha mestre em uso: {exc}')
+                    return 3
+                except ExcelSyncError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Falha ao atualizar planilha mestre: {exc}')
+                    return 3
 
             # Cria unidades para este agente
             # Mantém ordem estável; usa valores únicos de 'nome_filial'
@@ -94,10 +112,26 @@ def main(argv: list[str] | None = None) -> int:
                 und = models.Unidade(id_unidade=id_unidade, nome=nome_un, empresa_id=emp.id)
                 db.add(und)
                 db.flush()
+                try:
+                    append_filial(
+                        nome_empresa=emp.nome,
+                        id_empresa=emp.id_empresa,
+                        nome_unidade=und.nome,
+                        id_unidade=und.id_unidade,
+                        base_dir=base_dir,
+                    )
+                except ExcelSyncLockedError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Planilha mestre em uso: {exc}')
+                    return 3
+                except ExcelSyncError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Falha ao atualizar planilha mestre: {exc}')
+                    return 3
 
                 # Monta estrutura de pastas usando BASE_DIR
-                base_dir = os.getenv("BASE_DIR", str(_repo_root() / "cliente"))
-                montar_estrutura_unidade(base_dir, f"{emp.nome} - {emp.id_empresa}", f"{und.nome} - {und.id_unidade}")
+                montar_estrutura_unidade(base_dir_str, f"{emp.nome} - {emp.id_empresa}", f"{und.nome} - {und.id_unidade}")
+                existentes.add(und.nome)
 
         db.commit()
         print("[OK] Importação concluída.")

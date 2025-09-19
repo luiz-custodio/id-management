@@ -15,12 +15,13 @@ SUBPASTAS_NUMERADAS = [
     "10 Distribuidora",
     "11 ICMS",
     "12 Estudos e Análises",
+    "13 Miscelânea",
 ]
 
 # Subcódigos CCEE usados na pasta 04 e também replicados na 09 (Modelagem)
 # Mantidos conforme documentação oficial do projeto
 CCEE_SUBCODIGOS = [
-    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001",
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCAP001",
     "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
 ]
 
@@ -56,12 +57,15 @@ def subpasta_por_tipo(tipo: str, ccee_cod: str | None = None) -> str:
     t = tipo.upper()
     if t == "FAT":
         return "02 Faturas"
-    if t in {"NE-CP", "NE-LP"}:
+    if t in {"NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC"}:
         return "03 Notas de Energia"
     if t == "REL":
         return "01 Relatórios e Resultados"
     if t == "EST":
         return "12 Estudos e Análises"
+    # ICMS: novos prefixos e compatibilidade legada
+    if t.startswith("ICMS-") or t in {"DEVEC", "LDO", "REC"}:
+        return "11 ICMS"
     # DOC e MIN residem em "05 BM Energia" (ver docs/dicionario-tags)
     if t.startswith("DOC-") or t.startswith("MIN-"):
         return "05 BM Energia"
