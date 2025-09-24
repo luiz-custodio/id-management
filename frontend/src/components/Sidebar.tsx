@@ -145,22 +145,22 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   };
 
   return (
-    <div className={cn("flex flex-col bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm border-r border-blue-800/30 transition-all duration-500 ease-out overflow-hidden", 
+    <div className={cn("flex flex-col bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-xl border-r border-blue-400/20 shadow-2xl transition-all duration-500 ease-out overflow-hidden", 
       isCollapsed ? "w-16" : "w-56", 
       className
     )}>
-      {/* Logo - Compacto */}
-      <div className="p-4 border-b border-blue-800/30">
+      {/* Logo - Compacto com efeitos modernos */}
+      <div className="p-4 border-b border-blue-400/20 bg-gradient-to-r from-transparent via-blue-900/20 to-transparent">
         <div className="flex items-center gap-2">
-          <div className="bg-gradient-to-br from-blue-700 to-blue-800 rounded-lg p-2 shadow-lg shadow-blue-700/25 border border-blue-600/30 flex-shrink-0">
+          <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-2 shadow-lg shadow-blue-500/25 border border-blue-400/20 flex-shrink-0 hover:shadow-blue-500/40 hover:scale-105 transition-all duration-300">
             <span className="text-white font-bold text-sm tracking-tight">ID</span>
           </div>
           {!isCollapsed && (
             <div className="min-w-0 transition-all duration-500 ease-in-out">
-              <h1 className="text-sm font-bold bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent tracking-wide">
+              <h1 className="text-sm font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-blue-300 bg-clip-text text-transparent tracking-wide">
                 MANAGEMENT
               </h1>
-              <p className="text-xs text-blue-300/70">Sistema de Gerenciamento</p>
+              <p className="text-xs text-blue-300/70 font-medium">Sistema de Gerenciamento</p>
             </div>
           )}
         </div>
@@ -179,8 +179,8 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
         </div>
       </div>
       
-      {/* Navegação - Compacta */}
-      <nav className="flex-1 p-3 space-y-1">
+      {/* Navegação - Compacta com efeitos modernos */}
+      <nav className="flex-1 p-3 space-y-2">
         {navigation.map((item) => {
           const isActive = location.pathname === item.href;
           return (
@@ -188,31 +188,36 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
               <Link
                 to={item.href}
                 className={cn(
-                  "flex items-center rounded-lg text-sm transition-all duration-300 ease-in-out group relative",
-                  isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
+                  "flex items-center rounded-xl text-sm transition-all duration-300 ease-in-out group relative overflow-hidden backdrop-blur-sm",
+                  isCollapsed ? "justify-center p-3" : "gap-3 px-3 py-3",
                   isActive
-                    ? "bg-blue-700/30 text-blue-100 border border-blue-600/40 shadow-sm"
-                    : "text-blue-200/80 hover:bg-blue-800/20 hover:text-blue-100 hover:border-blue-700/30 border border-transparent"
+                    ? "bg-gradient-to-r from-blue-600/20 to-blue-500/10 text-blue-100 border border-blue-400/40 shadow-lg shadow-blue-900/20"
+                    : "text-blue-200/80 hover:bg-gradient-to-r hover:from-blue-800/15 hover:to-blue-700/10 hover:text-blue-100 hover:border-blue-500/30 hover:shadow-md hover:shadow-blue-900/10 border border-transparent hover:-translate-y-0.5"
                 )}
               >
                 <item.icon className={cn(
-                  "h-4 w-4 flex-shrink-0 transition-colors duration-300 ease-in-out",
-                  isActive ? "text-blue-300" : "text-blue-400/70 group-hover:text-blue-300"
+                  "h-5 w-5 flex-shrink-0 transition-all duration-300 ease-in-out",
+                  isActive ? "text-blue-300 drop-shadow-sm" : "text-blue-400/70 group-hover:text-blue-300 group-hover:scale-110"
                 )} />
                 {!isCollapsed && (
                   <div className="flex-1 min-w-0 transition-all duration-300 ease-in-out">
-                    <div className="font-medium truncate">{item.name}</div>
-                    <div className="text-xs text-blue-300/50 truncate">{item.description}</div>
+                    <div className="font-semibold truncate">{item.name}</div>
+                    <div className="text-xs text-blue-300/60 truncate font-medium">{item.description}</div>
                   </div>
+                )}
+                
+                {/* Highlight effect */}
+                {isActive && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-transparent opacity-50 animate-pulse"></div>
                 )}
               </Link>
               
-              {/* Tooltip para modo colapsado */}
+              {/* Tooltip para modo colapsado - Melhorado */}
               {isCollapsed && (
-                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-300 ease-in-out whitespace-nowrap z-50 border border-slate-600 transform group-hover:translate-x-1">
-                  <div className="font-medium">{item.name}</div>
-                  <div className="text-slate-300">{item.description}</div>
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-800"></div>
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-3 py-2 bg-slate-800/95 backdrop-blur-md text-white text-xs rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-all duration-300 ease-in-out whitespace-nowrap z-50 border border-blue-400/20 shadow-xl shadow-blue-900/20 transform group-hover:translate-x-2">
+                  <div className="font-semibold text-blue-300">{item.name}</div>
+                  <div className="text-slate-300 mt-0.5">{item.description}</div>
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-800/95"></div>
                 </div>
               )}
             </div>
@@ -279,12 +284,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       <div className="p-3 border-t border-blue-800/30 text-xs text-blue-300/60 transition-all duration-300 ease-in-out">
         {isCollapsed ? (
           <div className="text-center transition-all duration-300 ease-in-out">
-            <div className="text-blue-400/50 font-mono" title="v1.0.69">v1.0.69</div>
+            <div className="text-blue-400/50 font-mono" title="v1.0.70">v1.0.70</div>
           </div>
         ) : (
           <div className="transition-all duration-300 ease-in-out">
             <div className="truncate">Sistema de Gerenciamento de IDs</div>
-            <div className="text-blue-400/50 font-mono">v1.0.69</div>
+            <div className="text-blue-400/50 font-mono">v1.0.70</div>
           </div>
         )}
       </div>

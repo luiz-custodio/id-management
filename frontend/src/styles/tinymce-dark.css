@@ -1,0 +1,54 @@
+/* TinyMCE Dark Theme Integration */
+.tox.tox-tinymce {
+  border: none !important;
+}
+
+.tox .tox-edit-area {
+  border: none !important;
+  background-color: #1e293b !important;
+}
+
+.tox .tox-edit-area iframe {
+  border: none !important;
+  background-color: #1e293b !important;
+}
+
+.tox .tox-statusbar {
+  border-top: 1px solid #475569 !important;
+  background-color: #334155 !important;
+}
+
+.tox .tox-toolbar {
+  background-color: #334155 !important;
+  border-bottom: 1px solid #475569 !important;
+}
+
+/* Remove borders from toolbar groups */
+.tox .tox-toolbar__group {
+  border-right: 1px solid #475569 !important;
+}
+
+.tox .tox-toolbar__group:last-child {
+  border-right: none !important;
+}
+
+/* Improve button hover states */
+.tox .tox-tbtn--enabled,
+.tox .tox-tbtn--enabled:hover {
+  background: #475569 !important;
+  color: #e2e8f0 !important;
+}
+
+/* Adjust dropdown and menu colors */
+.tox .tox-collection__item {
+  color: #e2e8f0 !important;
+}
+
+.tox .tox-collection__item:hover {
+  background-color: #475569 !important;
+}
+
+/* Word count styling */
+.tox .tox-statusbar__text-container {
+  color: #94a3b8 !important;
+}

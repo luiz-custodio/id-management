@@ -1671,48 +1671,77 @@ const EmpresasPage: React.FC = () => {
           </div>
         )}
 
-        {/* Search Bar */}
-        <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-blue-400" />
-          <input
-            type="text"
-            placeholder="Pesquisar"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900/70 border border-blue-800/40 rounded-lg pl-10 pr-4 py-3 text-white placeholder-blue-400/70 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
-          />
+        {/* Search Bar - Modernizado */}
+        <div className="relative mb-4 group">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-blue-400 group-hover:text-blue-300 transition-colors duration-300" />
+            <input
+              type="text"
+              placeholder="Pesquisar empresas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-900/80 border border-blue-400/30 rounded-xl pl-12 pr-4 py-4 text-white placeholder-blue-400/70 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/60 transition-all duration-300 hover:border-blue-400/50 backdrop-blur-md shadow-lg hover:shadow-blue-900/20"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-blue-300 transition-colors duration-200"
+                title="Limpar busca"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-slate-900/70 rounded-lg overflow-hidden border border-blue-800/40 backdrop-blur-sm shadow-lg shadow-blue-900/20">
-          <table className="w-full">
+        {/* Table - Design Ultra Moderno */}
+        <div className="bg-slate-900/80 rounded-2xl overflow-hidden border border-blue-400/20 backdrop-blur-xl shadow-2xl shadow-blue-900/20 hover:shadow-blue-900/30 transition-all duration-300 relative">
+          {/* Linha de destaque superior animada */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent animate-pulse"></div>
+          
+          <table className="w-full relative">
             <thead>
-              <tr className="border-b border-blue-800/40 text-sm bg-gradient-to-r from-blue-800/25 to-blue-700/25">
-                <th className="text-left px-6 py-3 font-semibold text-blue-300 w-24">
-                  <button onClick={() => toggleSort('id')} className="inline-flex items-center gap-1 hover:text-white transition-colors">
-                    ID
+              <tr className="border-b border-blue-400/30 text-sm bg-slate-900/80 backdrop-blur-sm relative">
+                {/* Fundo com padrão sutil */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.03),transparent_50%)]"></div>
+                
+                <th className="text-left px-6 py-5 font-semibold text-blue-300 w-20 relative">
+                  <button onClick={() => toggleSort('id')} className="inline-flex items-center gap-1.5 hover:text-blue-200 transition-all duration-300 hover:scale-105 group">
+                    <span className="relative">
+                      ID
+                      <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
+                    </span>
                     {sortBy !== 'id' ? (
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
                     ) : sortDir === 'asc' ? (
-                      <ChevronUp className="w-3 h-3" />
+                      <ChevronUp className="w-3.5 h-3.5 text-blue-400" />
                     ) : (
-                      <ChevronDown className="w-3 h-3" />
+                      <ChevronDown className="w-3.5 h-3.5 text-blue-400" />
                     )}
                   </button>
                 </th>
-                <th className="text-left px-6 py-3 font-semibold text-blue-300">
-                  <button onClick={() => toggleSort('nome')} className="inline-flex items-center gap-1 hover:text-white transition-colors">
-                    Nome
+                <th className="text-left px-6 py-5 font-semibold text-blue-300 min-w-0 relative">
+                  <button onClick={() => toggleSort('nome')} className="inline-flex items-center gap-1.5 hover:text-blue-200 transition-all duration-300 hover:scale-105 group">
+                    <span className="relative">
+                      Nome da Empresa
+                      <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
+                    </span>
                     {sortBy !== 'nome' ? (
-                      <ArrowUpDown className="w-3 h-3 opacity-60" />
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
                     ) : sortDir === 'asc' ? (
-                      <ChevronUp className="w-3 h-3" />
+                      <ChevronUp className="w-3.5 h-3.5 text-blue-400" />
                     ) : (
-                      <ChevronDown className="w-3 h-3" />
+                      <ChevronDown className="w-3.5 h-3.5 text-blue-400" />
                     )}
                   </button>
                 </th>
-                <th className="text-right px-6 py-3 font-semibold text-blue-300 w-20">Ações</th>
+                <th className="text-right px-6 py-5 font-semibold text-blue-300 w-28 relative">
+                  <span className="relative">
+                    Ações
+                    <div className="absolute -bottom-1 right-0 w-8 h-0.5 bg-gradient-to-l from-blue-400 to-transparent opacity-30"></div>
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody className="text-sm">
@@ -1721,58 +1750,111 @@ const EmpresasPage: React.FC = () => {
                 return (
                   <React.Fragment key={empresa.id}>
                     <tr 
-                      className={`border-b border-blue-800/30 hover:bg-blue-800/15 transition-all duration-200 cursor-pointer ${
-                        isExpanded ? 'bg-blue-800/10' : ''
+                      className={`border-b border-blue-400/15 hover:bg-gradient-to-r hover:from-blue-800/25 hover:to-blue-700/15 transition-all duration-500 cursor-pointer backdrop-blur-sm group relative overflow-hidden ${
+                        isExpanded ? 'bg-gradient-to-r from-blue-700/20 to-blue-600/15 shadow-lg shadow-blue-900/15 ring-1 ring-blue-500/20' : ''
                       }`}
                     >
+                      {/* Efeito shimmer sutil */}
+                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/[0.02] to-transparent skew-x-12"></div>
+                      
+                      {/* Linha de destaque lateral */}
+                      <div className="absolute left-0 top-0 bottom-0 w-0 bg-gradient-to-b from-blue-400 via-purple-400 to-blue-500 group-hover:w-1 transition-all duration-300 rounded-r-full"></div>
+                      
+                      {/* Glow effect sutil */}
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-blue-500/[0.02] via-transparent to-purple-500/[0.02]"></div>
+                      
                       <td 
-                        className={`${windowSize === 'small' ? 'px-3 py-2' : 'px-6 py-3'} text-blue-200 font-mono tracking-wider`}
+                        className={`${windowSize === 'small' ? 'px-3 py-3' : 'px-6 py-5'} text-blue-300 font-mono tracking-wider font-semibold group-hover:text-blue-200 transition-all duration-300 text-center w-20 relative`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
                       >
-                        {empresa.id_empresa}
+                        <div className="relative inline-flex items-center justify-center">
+                          <div className="absolute inset-0 rounded-lg bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-all duration-300 scale-75 group-hover:scale-100"></div>
+                          <span className="relative z-10 px-2 py-1 rounded-md bg-slate-800/50 group-hover:bg-blue-900/30 transition-all duration-300">
+                            {empresa.id_empresa}
+                          </span>
+                        </div>
                       </td>
                       <td 
-                        className={`${windowSize === 'small' ? 'px-3 py-2' : 'px-6 py-3'} text-white`}
+                        className={`${windowSize === 'small' ? 'px-3 py-3' : 'px-6 py-5'} text-white font-medium group-hover:text-blue-100 transition-all duration-300 max-w-0 w-full relative`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
                       >
-                        {empresa.nome}
-                        {isExpanded && (
-                          <span className="ml-2 text-xs text-blue-400 animate-fade-in">(expandido)</span>
-                        )}
+                        <div className="flex items-center justify-between min-w-0">
+                          <div className="relative flex-1 min-w-0">
+                            <span className="block truncate pr-2 text-base font-semibold relative z-10" title={empresa.nome}>
+                              {empresa.nome}
+                            </span>
+                            {/* Underline animado */}
+                            <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-500 delay-100"></div>
+                          </div>
+                          {isExpanded && (
+                            <div className="flex-shrink-0 relative">
+                              <span className="inline-flex items-center text-xs text-blue-400 animate-fade-in bg-gradient-to-r from-blue-800/30 to-blue-700/20 px-3 py-1 rounded-full whitespace-nowrap border border-blue-500/20 shadow-sm">
+                                <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mr-2 animate-pulse"></div>
+                                Expandido
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-6 py-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRenameEmpresa(empresa);
-                            }}
-                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
-                            title="Renomear empresa"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEmpresaToCreateUnidade({ id: empresa.id, nome: empresa.nome });
-                              setShowCreateUnidadeModal(true);
-                            }}
-                            className="p-1.5 text-green-400 hover:text-green-300 hover:bg-green-950/30 rounded transition-all duration-200 hover:scale-110"
-                            title="Criar nova unidade"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenDeleteModal(empresa);
-                            }}
-                            className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded transition-all duration-200 hover:scale-110"
-                            title="Excluir empresa"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      <td className="px-4 py-5 text-right w-28 relative">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Botão Renomear */}
+                          <div className="relative group/btn">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameEmpresa(empresa);
+                              }}
+                              className="relative p-2 text-yellow-400 hover:text-yellow-300 rounded-xl transition-all duration-300 hover:scale-110 backdrop-blur-sm overflow-hidden group"
+                              title="Renomear empresa"
+                            >
+                              {/* Background animado */}
+                              <div className="absolute inset-0 bg-gradient-to-r from-yellow-900/20 to-yellow-800/10 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl"></div>
+                              {/* Glow effect */}
+                              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-500 blur-sm bg-yellow-400/20 rounded-xl scale-150"></div>
+                              {/* Ícone */}
+                              <Edit2 className="w-4 h-4 relative z-10 transition-transform duration-300 group-hover:rotate-12" />
+                            </button>
+                          </div>
+
+                          {/* Botão Adicionar */}
+                          <div className="relative group/btn">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEmpresaToCreateUnidade({ id: empresa.id, nome: empresa.nome });
+                                setShowCreateUnidadeModal(true);
+                              }}
+                              className="relative p-2 text-green-400 hover:text-green-300 rounded-xl transition-all duration-300 hover:scale-110 backdrop-blur-sm overflow-hidden group"
+                              title="Criar nova unidade"
+                            >
+                              {/* Background animado */}
+                              <div className="absolute inset-0 bg-gradient-to-r from-green-900/20 to-green-800/10 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl"></div>
+                              {/* Glow effect */}
+                              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-500 blur-sm bg-green-400/20 rounded-xl scale-150"></div>
+                              {/* Ícone */}
+                              <Plus className="w-4 h-4 relative z-10 transition-transform duration-300 group-hover:rotate-90" />
+                            </button>
+                          </div>
+
+                          {/* Botão Excluir */}
+                          <div className="relative group/btn">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenDeleteModal(empresa);
+                              }}
+                              className="relative p-2 text-red-400 hover:text-red-300 rounded-xl transition-all duration-300 hover:scale-110 backdrop-blur-sm overflow-hidden group"
+                              title="Excluir empresa"
+                            >
+                              {/* Background animado */}
+                              <div className="absolute inset-0 bg-gradient-to-r from-red-900/20 to-red-800/10 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl"></div>
+                              {/* Glow effect */}
+                              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-500 blur-sm bg-red-400/20 rounded-xl scale-150"></div>
+                              {/* Ícone */}
+                              <Trash2 className="w-4 h-4 relative z-10 transition-transform duration-300 group-hover:scale-110" />
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>

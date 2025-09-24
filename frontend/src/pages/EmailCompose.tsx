@@ -56,6 +56,7 @@ import 'tinymce/plugins/quickbars'
 import 'tinymce/skins/ui/oxide/skin.min.css'
 import 'tinymce/skins/ui/oxide/content.min.css'
 import 'tinymce/skins/content/default/content.min.css'
+import '../styles/tinymce-dark.css'
 
 const EmailCompose: React.FC = () => {
   const [loading, setLoading] = useState(false)
@@ -112,6 +113,7 @@ const EmailCompose: React.FC = () => {
       statusbar: true,
       branding: false,
       toolbar_sticky: true,
+      resize: false,
       plugins: [
         'advlist',
         'autolink',
@@ -149,6 +151,18 @@ const EmailCompose: React.FC = () => {
           background-color: #1e293b; 
           margin: 0; 
           padding: 16px; 
+          border: none;
+          outline: none;
+        }
+        * { box-sizing: border-box; }
+        .mce-content-body { 
+          background-color: #1e293b !important; 
+          border: none !important;
+          outline: none !important;
+        }
+        .mce-edit-area { 
+          border: none !important; 
+          background-color: #1e293b !important;
         }
         table { border-collapse: collapse; width: 100%; }
         table th, table td { border: 1px solid #475569; padding: 6px; color: #e2e8f0; }
@@ -225,6 +239,7 @@ const EmailCompose: React.FC = () => {
       // Melhor integração com o tema escuro
       promotion: false,
       body_class: 'dark-editor',
+      // Remove bordas e ajusta cores
       setup: (editor: TinyMCEEditor) => {
         let spellcheckEnabled = true;
 
@@ -238,7 +253,25 @@ const EmailCompose: React.FC = () => {
           const body = editor.getBody();
           if (body) {
             body.setAttribute('spellcheck', spellcheckEnabled ? 'true' : 'false');
+            // Remove bordas brancas adicionais
+            body.style.border = 'none';
+            body.style.outline = 'none';
           }
+          
+          // Remove bordas do container do editor
+          const container = editor.getContainer();
+          if (container) {
+            const editArea = container.querySelector('.tox-edit-area') as HTMLElement;
+            const iframe = container.querySelector('.tox-edit-area iframe') as HTMLElement;
+            if (editArea) {
+              editArea.style.border = 'none';
+              editArea.style.backgroundColor = '#1e293b';
+            }
+            if (iframe) {
+              iframe.style.border = 'none';
+            }
+          }
+          
           applyChecklistClasses();
         });
 
@@ -685,7 +718,7 @@ const EmailCompose: React.FC = () => {
                   <span>Corpo</span>
                   <span className="text-[10px] text-blue-400">Editor TinyMCE com suporte a colagem do Word</span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-blue-500/30">
+                <div className="overflow-hidden rounded-lg border border-blue-500/30 bg-slate-800">
                   <Editor
                     licenseKey="gpl"
                     value={bodyHtml}
