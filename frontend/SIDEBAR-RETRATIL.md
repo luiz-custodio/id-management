@@ -45,7 +45,7 @@ A sidebar do sistema agora possui funcionalidade retrátil, permitindo ao usuár
    - Função de toggle
 
 2. **`src/components/Sidebar.tsx`** (modificado)
-   - Integração com hook useSidebar
+   - Integração com hook useSidebar![1758311562287](image/SIDEBAR-RETRATIL/1758311562287.png)![1758311563935](image/SIDEBAR-RETRATIL/1758311563935.png)![1758311564384](image/SIDEBAR-RETRATIL/1758311564384.png)![1758311574222](image/SIDEBAR-RETRATIL/1758311574222.png)![1758311574783](image/SIDEBAR-RETRATIL/1758311574783.png)![1758311574967](image/SIDEBAR-RETRATIL/1758311574967.png)![1758311575133](image/SIDEBAR-RETRATIL/1758311575133.png)![1758311575273](image/SIDEBAR-RETRATIL/1758311575273.png)
    - Layout responsivo baseado no estado
    - Tooltips para modo colapsado
    - Animações suaves de transição

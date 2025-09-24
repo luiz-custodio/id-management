@@ -11,6 +11,7 @@ from .organizer import preview_moves, apply_moves
 from .routers import batch_organize
 from .routers import batch_debug
 from .routers import batch_simple
+from .routers import emails
 from .excel_sync import (
     ExcelSyncError,
     ExcelSyncLockedError,
@@ -163,6 +164,7 @@ Base.metadata.create_all(bind=engine)
 
 # Incluir routers
 app.include_router(batch_organize.router)  # Router original funcionando
+app.include_router(emails.router)
 # app.include_router(batch_simple.router)  # Router simples funcionando
 # app.include_router(batch_debug.router)  # Router de debug
 
@@ -1538,3 +1540,5 @@ async def criar_pastas_do_banco(db: Session = Depends(get_db)):
         "message": f"{pastas_criadas} pasta(s) criada(s) com sucesso",
         "base_path": str(base_path)
     }
+
+

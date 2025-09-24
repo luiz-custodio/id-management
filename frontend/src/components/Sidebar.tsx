@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Package, ClipboardCopy, Menu, X } from 'lucide-react';
+import { Building2, Package, ClipboardCopy, Menu, X, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { api, type Empresa, type Unidade } from '@/lib/api';
@@ -34,6 +34,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       href: '/empresas',
       icon: Building2,
       description: 'Gerenciar empresas e unidades'
+    },
+    {
+      name: 'Envio de E-mails',
+      href: '/emails',
+      icon: Mail,
+      description: 'Compor e enviar mensagens'
     },
     {
       name: 'Organização em Lote',
@@ -273,12 +279,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       <div className="p-3 border-t border-blue-800/30 text-xs text-blue-300/60 transition-all duration-300 ease-in-out">
         {isCollapsed ? (
           <div className="text-center transition-all duration-300 ease-in-out">
-            <div className="text-blue-400/50 font-mono" title="v1.0.36">v1.0</div>
+            <div className="text-blue-400/50 font-mono" title="v1.0.69">v1.0.69</div>
           </div>
         ) : (
           <div className="transition-all duration-300 ease-in-out">
             <div className="truncate">Sistema de Gerenciamento de IDs</div>
-            <div className="text-blue-400/50 font-mono">v1.0.36</div>
+            <div className="text-blue-400/50 font-mono">v1.0.69</div>
           </div>
         )}
       </div>
@@ -287,3 +293,4 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
 };
 
 export default Sidebar;
+

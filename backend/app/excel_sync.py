@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Set
+from dataclasses import dataclass
+from typing import Dict, Iterator, List, Optional, Set
 
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -40,11 +42,11 @@ def _excel_path() -> Path:
     path_str = os.getenv(EXCEL_PATH_ENV, "").strip()
     if not path_str:
         raise ExcelSyncConfigError(
-            "Variável EXCEL_MASTER_PATH não configurada."
+            "Variavel EXCEL_MASTER_PATH nao configurada."
         )
     path = Path(path_str)
     if not path.exists():
-        raise ExcelSyncError(f"Planilha não encontrada: {path}")
+        raise ExcelSyncError(f"Planilha nao encontrada: {path}")
     return path
 
 
@@ -57,7 +59,7 @@ def _open_workbook() -> Iterator[tuple[Path, "Workbook"]]:
         wb = load_workbook(path)
     except PermissionError as exc:
         raise ExcelSyncLockedError(
-            "Não foi possível acessar a planilha. Feche o arquivo no Excel e tente novamente."
+            "Nao foi possivel acessar a planilha. Feche o arquivo no Excel e tente novamente."
         ) from exc
     except OSError as exc:
         raise ExcelSyncError(f"Falha ao abrir a planilha: {exc}") from exc
@@ -68,7 +70,7 @@ def _open_workbook() -> Iterator[tuple[Path, "Workbook"]]:
             wb.save(path)
         except PermissionError as exc:
             raise ExcelSyncLockedError(
-                "Não foi possível salvar a planilha. Feche o arquivo no Excel e tente novamente."
+                "Nao foi possivel salvar a planilha. Feche o arquivo no Excel e tente novamente."
             ) from exc
         except OSError as exc:
             raise ExcelSyncError(f"Falha ao salvar a planilha: {exc}") from exc
@@ -85,7 +87,7 @@ def _open_workbook_values() -> tuple[Path, "Workbook"]:
         wb = load_workbook(path, data_only=True)
     except PermissionError as exc:
         raise ExcelSyncLockedError(
-            "Não foi possível acessar a planilha. Feche o arquivo no Excel e tente novamente."
+            "Nao foi possivel acessar a planilha. Feche o arquivo no Excel e tente novamente."
         ) from exc
     except OSError as exc:
         raise ExcelSyncError(f"Falha ao abrir a planilha: {exc}") from exc
@@ -117,7 +119,7 @@ def _collect_ids(sheet_name: str, *, column: int, width: int) -> Set[str]:
     path, wb = _open_workbook_values()
     try:
         if sheet_name not in wb.sheetnames:
-            raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_name}'")
+            raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_name}'")
         sheet = wb[sheet_name]
         ids: Set[str] = set()
         for row in sheet.iter_rows(min_row=2, values_only=True):
@@ -186,7 +188,7 @@ def append_empresa(nome: str, id_empresa: str) -> bool:
     try:
         with _open_workbook() as (path, workbook):
             if sheet_name not in workbook.sheetnames:
-                raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_name}'")
+                raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_name}'")
             sheet = workbook[sheet_name]
             normalized_id = _normalize_id(id_empresa, width=4)
             if _empresa_exists(sheet, normalized_id):
@@ -194,7 +196,7 @@ def append_empresa(nome: str, id_empresa: str) -> bool:
             sheet.append([nome, None, normalized_id])
             return True
     except ExcelSyncConfigError:
-        logger.info("EXCEL_MASTER_PATH não configurada; ignorando sync de Empresas")
+        logger.info("EXCEL_MASTER_PATH nao configurada; ignorando sync de Empresas")
         return False
 
 
@@ -210,7 +212,7 @@ def append_filial(
     try:
         with _open_workbook() as (path, workbook):
             if sheet_name not in workbook.sheetnames:
-                raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_name}'")
+                raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_name}'")
             sheet = workbook[sheet_name]
             if _filial_exists(sheet, id_empresa, id_unidade):
                 return False
@@ -228,7 +230,7 @@ def append_filial(
             ])
             return True
     except ExcelSyncConfigError:
-        logger.info("EXCEL_MASTER_PATH não configurada; ignorando sync de Filiais")
+        logger.info("EXCEL_MASTER_PATH nao configurada; ignorando sync de Filiais")
         return False
 
 
@@ -240,7 +242,7 @@ def rename_empresa(id_empresa: str, novo_nome: str, *, base_dir: Optional[Path] 
 
     with _open_workbook() as (path, workbook):
         if sheet_emp not in workbook.sheetnames:
-            raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_emp}'")
+            raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_emp}'")
         empresas_ws = workbook[sheet_emp]
         for row in empresas_ws.iter_rows(min_row=2):
             if len(row) < 3:
@@ -287,7 +289,7 @@ def rename_filial(
 
     with _open_workbook() as (path, workbook):
         if sheet_fil not in workbook.sheetnames:
-            raise ExcelSyncError(f"Planilha '{path}' não possui aba '{sheet_fil}'")
+            raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_fil}'")
         filiais_ws = workbook[sheet_fil]
         found = False
         for row in filiais_ws.iter_rows(min_row=2):
@@ -307,3 +309,82 @@ def rename_filial(
                 found = True
                 break
         return found
+
+
+
+
+@dataclass
+class EmpresaEmailRecord:
+    """Empresas registradas na planilha com e-mails associados."""
+
+    nome: str
+    id_empresa: str
+    emails: List[str]
+    excel_rows: List[int]
+
+
+_EMAIL_SPLIT_REGEX = re.compile(r"[;,\n]+")
+_EMAIL_VALID_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _extract_emails(value: Optional[object]) -> List[str]:
+    if value is None:
+        return []
+    text = str(value)
+    if not text:
+        return []
+
+    parts = _EMAIL_SPLIT_REGEX.split(text)
+    emails: List[str] = []
+    seen = set()
+    for raw in parts:
+        candidate = raw.strip().strip('"').strip("'")
+        if not candidate:
+            continue
+        candidate = candidate.replace(' ', '')
+        if not _EMAIL_VALID_REGEX.match(candidate):
+            continue
+        lowered = candidate.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        emails.append(candidate)
+    return emails
+
+
+def fetch_empresas_emails(sheet_name: Optional[str] = None) -> Dict[str, EmpresaEmailRecord]:
+    """Return a mapping id_empresa -> EmpresaEmailRecord using spreadsheet data."""
+
+    chosen_sheet = sheet_name or _sheet_name(EMPRESAS_SHEET_ENV, DEFAULT_EMPRESAS_SHEET)
+    path, workbook = _open_workbook_values()
+    try:
+        if chosen_sheet not in workbook.sheetnames:
+            raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{chosen_sheet}'")
+        sheet = workbook[chosen_sheet]
+        result: Dict[str, EmpresaEmailRecord] = {}
+        for idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+            if not row:
+                continue
+            nome = str(row[0]).strip() if len(row) > 0 and row[0] else ""
+            id_empresa = _normalize_id(row[2] if len(row) > 2 else None, width=4)
+            if not nome or not id_empresa.strip("0"):
+                continue
+            emails = _extract_emails(row[7] if len(row) > 7 else None)
+            if not emails and id_empresa not in result:
+                result[id_empresa] = EmpresaEmailRecord(nome=nome, id_empresa=id_empresa, emails=[], excel_rows=[idx])
+                continue
+
+            record = result.setdefault(
+                id_empresa,
+                EmpresaEmailRecord(nome=nome, id_empresa=id_empresa, emails=[], excel_rows=[])
+            )
+            record.excel_rows.append(idx)
+            for email in emails:
+                if email not in record.emails:
+                    record.emails.append(email)
+        return result
+    finally:
+        try:
+            workbook.close()
+        except Exception:
+            pass

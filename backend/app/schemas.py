@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # EMPRESA
 class EmpresaCreate(BaseModel):
@@ -132,3 +132,37 @@ class FolderStructure(BaseModel):
     description: str
     types: List[str]
     count: int
+
+
+# EMAIL SENDER
+class EmpresaEmailOut(BaseModel):
+    empresa_id: int
+    id_empresa: str
+    nome: str
+    emails: List[EmailStr]
+    excel_rows: List[int] = Field(default_factory=list)
+
+
+class EmailSendRequest(BaseModel):
+    empresa_ids: List[int]
+    subject: str = Field(..., min_length=1)
+    body_html: str = Field(..., min_length=1)
+    override_recipients: Optional[List[EmailStr]] = None
+    save_to_sent_items: bool = True
+    sender_email: Optional[EmailStr] = None
+
+
+class EmailSendResponse(BaseModel):
+    sent: bool
+    recipients: List[EmailStr]
+    missing: List[EmpresaEmailOut]
+    failed_recipients: List[str] = Field(default_factory=list)
+    request_id: Optional[str] = None
+    sender: EmailStr
+
+
+class EmailConfigResponse(BaseModel):
+    default_sender: EmailStr
+    allowed_senders: List[EmailStr]
+
+

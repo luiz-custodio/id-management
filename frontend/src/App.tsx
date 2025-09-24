@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 // Rotas
 import EmpresasPage from './pages/Empresas';
 import BatchOrganize from './pages/BatchOrganize';
+import EmailCompose from './pages/EmailCompose';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 
@@ -79,6 +80,7 @@ function App() {
               <Route path="/" element={<EmpresasPage />} />
               <Route path="/empresas" element={<EmpresasPage />} />
               <Route path="/batch-organize" element={<BatchOrganize />} />
+              <Route path="/emails" element={<EmailCompose />} />
             </Routes>
           </main>
         </div>
@@ -89,3 +91,4 @@ function App() {
 }
 
 export default App
+

@@ -168,6 +168,36 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
+export type EmpresaEmail = {
+  empresa_id: number;
+  id_empresa: string;
+  nome: string;
+  emails: string[];
+  excel_rows: number[];
+};
+
+export type EmailSendRequest = {
+  empresaIds: number[];
+  subject: string;
+  bodyHtml: string;
+  overrideRecipients?: string[];
+  saveToSentItems?: boolean;
+  senderEmail?: string;
+};
+
+export type EmailSendResponse = {
+  sent: boolean;
+  recipients: string[];
+  missing: EmpresaEmail[];
+  failedRecipients: string[];
+  request_id?: string | null;
+  sender: string;
+};
+
+export type EmailConfig = {
+  defaultSender: string;
+  allowedSenders: string[];
+};
 export const api = {
   listarEmpresas() {
     return http<Empresa[]>("/empresas");
@@ -501,5 +531,49 @@ export const api = {
   
   async batchGetFolders(): Promise<{ folders: FolderStructure[] }> {
     return http<{ folders: FolderStructure[] }>("/batch/folders");
-  }
+  },
+
+  async obterEmailConfig(): Promise<EmailConfig> {
+    const cfg = await http<{ default_sender: string; allowed_senders: string[] }>("/emails/config");
+    return {
+      defaultSender: cfg.default_sender,
+      allowedSenders: cfg.allowed_senders,
+    };
+  },
+
+  async listarEmpresasEmails(): Promise<EmpresaEmail[]> {
+    return http<EmpresaEmail[]>("/emails/empresas");
+  },
+
+  async enviarEmails(payload: EmailSendRequest): Promise<EmailSendResponse> {
+    const response = await http<{
+      sent: boolean;
+      recipients: string[];
+      missing: EmpresaEmail[];
+      failed_recipients?: string[];
+      request_id?: string | null;
+      sender: string;
+    }>("/emails/send", {
+      method: "POST",
+      body: JSON.stringify({
+        empresa_ids: payload.empresaIds,
+        subject: payload.subject,
+        body_html: payload.bodyHtml,
+        override_recipients: payload.overrideRecipients,
+        save_to_sent_items: payload.saveToSentItems ?? true,
+        sender_email: payload.senderEmail,
+      }),
+    });
+    return {
+      sent: response.sent,
+      recipients: response.recipients,
+      missing: response.missing,
+      failedRecipients: response.failed_recipients ?? [],
+      request_id: response.request_id,
+      sender: response.sender,
+    };
+  },
 };
+
+
+
