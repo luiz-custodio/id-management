@@ -37,7 +37,7 @@ DEFAULT_CCEE_CODES = [
     "CFZ004",
     "GFN001",
     "LFN001",
-    "LFRCA001",
+    "LFRCAP001",
     "LFRES001",
     "PEN001",
     "SUM001",

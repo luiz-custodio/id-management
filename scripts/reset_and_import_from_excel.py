@@ -98,6 +98,12 @@ def main(argv: List[str] | None = None) -> int:
     from backend.app import models
     from backend.app.id_utils import next_id_empresa, next_id_unidade
     from backend.app.fs_utils import montar_estrutura_unidade
+    from backend.app.excel_sync import (
+        ExcelSyncError,
+        ExcelSyncLockedError,
+        append_empresa,
+        append_filial,
+    )
 
     parser = argparse.ArgumentParser(description="Reset DB + Importar empresas/unidades do Excel + Criar pastas padrão")
     parser.add_argument("--file", required=True, help="Caminho do Excel (ex.: B:\\Planilha.xlsx)")
@@ -172,6 +178,16 @@ def main(argv: List[str] | None = None) -> int:
                 emp = models.Empresa(id_empresa=id_emp, nome=agente)
                 db.add(emp)
                 db.flush()
+                try:
+                    append_empresa(emp.nome, emp.id_empresa)
+                except ExcelSyncLockedError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Planilha mestre em uso: {exc}')
+                    return 3
+                except ExcelSyncError as exc:
+                    db.rollback()
+                    print(f'[ERRO] Falha ao atualizar planilha mestre: {exc}')
+                    return 3
                 empresas_map[agente] = emp
 
             # Unidade
@@ -197,6 +213,22 @@ def main(argv: List[str] | None = None) -> int:
             und = models.Unidade(id_unidade=id_unidade, nome=nome_unidade, empresa_id=emp.id)
             db.add(und)
             db.flush()
+            try:
+                append_filial(
+                    nome_empresa=emp.nome,
+                    id_empresa=emp.id_empresa,
+                    nome_unidade=und.nome,
+                    id_unidade=und.id_unidade,
+                    base_dir=base_dir,
+                )
+            except ExcelSyncLockedError as exc:
+                db.rollback()
+                print(f'[ERRO] Planilha mestre em uso: {exc}')
+                return 3
+            except ExcelSyncError as exc:
+                db.rollback()
+                print(f'[ERRO] Falha ao atualizar planilha mestre: {exc}')
+                return 3
 
             # Montar estrutura de pastas conforme docs/pastas.html (fs_utils já cumpre)
             rotulo_emp = f"{emp.nome} - {emp.id_empresa}"

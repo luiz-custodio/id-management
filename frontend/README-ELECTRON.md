@@ -1,53 +1,64 @@
-# Sistema de Gerenciamento de IDs - Electron
+# Sistema de Gerenciamento de IDs – Electron
 
-## Versão Desktop
+Aplicativo desktop (Windows) baseado em Electron, empacotado a partir do frontend React.
 
-Este aplicativo foi convertido para Electron para distribuição como aplicativo desktop.
+## Comandos
 
-### Configuração
+Desenvolvimento:
 
-- **Electron**: v37.3.1
-- **API Backend**: 127.0.0.1:8000 (PostgreSQL)
-- **Auto-detecção**: O app detecta automaticamente se está rodando no Electron e usa o servidor de rede
-
-### Comandos Disponíveis
-
-```bash
-# Desenvolvimento (modo dev com hot reload)
-npm run electron:dev
-
-# Build de produção (gera pasta executável)
-npm run electron:pack
-
-# Build com instalador (se necessário)
-npm run electron:dist
+```
+npm run electron:dev     # Vite + Electron com hot reload
 ```
 
-### Arquivos Importantes
+Builds:
 
-- `electron/main.cjs` - Processo principal do Electron
-- `electron/preload.cjs` - Script de contexto seguro
-- `src/lib/api.ts` - Cliente API com detecção automática de ambiente
+```
+npm run build:electron   # Build do React (pré-requisito dos comandos abaixo)
+npm run electron:pack    # Empacota executável (pasta dist-electron)
+npm run electron:dist    # Gera instalador (NSIS) com suporte a auto-update
+npm run electron:publish # Publica instalador no GitHub Releases
+```
 
-### Distribuição
+Executar app empacotado:
 
-O build fica em `dist-electron/ID Management System-win32-x64/`
+```
+npm run electron         # Abre o app usando os arquivos buildados
+```
 
-Para executar: `"ID Management System.exe"`
+## Configuração de Servidor
 
-### Funcionalidades
+O app consulta o backend definido em `%USERPROFILE%\\.id-management-config.json`:
 
-✅ Conexão automática com PostgreSQL (127.0.0.1:8000)
-✅ Interface React completa
-✅ Auto-update preparado (GitHub releases)
-✅ Menu de aplicativo nativo
-✅ Detecção automática de servidor
+```
+{ "host": "SEU_IP_DO_SERVIDOR", "port": 8000, "protocol": "http" }
+```
 
-### Configuração de Rede
+Se o arquivo não existir, usa o padrão definido no `electron/main.cjs`.
 
-O aplicativo se conecta automaticamente ao servidor PostgreSQL em `127.0.0.1:8000`. 
-Certifique-se de que:
+No modo web (sem Electron), o cliente usa `VITE_API_BASE` (ou `VITE_API_URL`) do `.env`.
 
-1. O backend está rodando: `docker-compose up -d`
-2. O PostgreSQL está acessível na rede
-3. Não há bloqueios de firewall
+## Estrutura de Build
+
+```
+dist-electron/
+  └─ ID Management System-win32-x64/
+      ├─ ID Management System.exe
+      └─ resources/app.asar
+
+dist/
+  ├─ index.html
+  └─ assets/
+```
+
+## Auto-Update
+
+- Habilitado quando instalado via setup gerado por `electron-builder`.
+- O instalador e os metadados (`latest.yml`, `.blockmap`) são publicados no GitHub Releases.
+- Durante a execução, o app verifica novas versões e oferece reinício para aplicar a atualização.
+
+## Arquivos Importantes
+
+- `electron/main.cjs`: processo principal do Electron (menu, janela, updater)
+- `electron/preload.cjs`: bridge segura (APIs expostas em `window.electronAPI`)
+- `src/lib/api.ts`: cliente HTTP com auto-resolução da base (Electron ou web)
+

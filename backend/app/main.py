@@ -6,7 +6,19 @@ from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
 from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo
+from .detection import detect_type_and_date
 from .organizer import preview_moves, apply_moves
+from .routers import batch_organize
+from .routers import batch_debug
+from .routers import batch_simple
+from .excel_sync import (
+    ExcelSyncError,
+    ExcelSyncLockedError,
+    append_empresa,
+    append_filial,
+    rename_empresa,
+    rename_filial,
+)
 import os
 import re
 import shutil
@@ -100,7 +112,8 @@ SUBPASTAS_PADRAO = [
     "09 CCEE - Modelagem",
     "10 Distribuidora",
     "11 ICMS",
-    "12 Estudos e Análises"
+    "12 Estudos e Análises",
+    "13 Miscelânea",
 ]
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
@@ -108,7 +121,16 @@ TIPO_PARA_PASTA = {
     # Referência (a resolução real usa fs_utils.subpasta_por_tipo)
     "FAT": "02 Faturas",
     "NE-CP": "03 Notas de Energia",
-    "NE-LP": "03 Notas de Energia", 
+    "NE-LP": "03 Notas de Energia",
+    "NE-VE": "03 Notas de Energia",
+    "NE-CPC": "03 Notas de Energia",
+    "NE-LPC": "03 Notas de Energia",
+    # ICMS (novo + compat)
+    "ICMS-DEVEC": "11 ICMS",
+    "ICMS-LDO": "11 ICMS",
+    "ICMS-REC": "11 ICMS",
+    "DEVEC": "11 ICMS",
+    "LDO": "11 ICMS",
     "REL": "01 Relatórios e Resultados",
     "RES": "01 Relatórios e Resultados",
     "EST": "12 Estudos e Análises",
@@ -125,7 +147,7 @@ TIPO_PARA_PASTA = {
 
 # Subpastas específicas para CCEE (cada tipo tem sua pasta)
 CCEE_SUBPASTAS = [
-    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCA001", 
+    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCAP001", 
     "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
 ]
 
@@ -138,6 +160,11 @@ app.add_middleware(
 
 # cria tabelas se não existirem
 Base.metadata.create_all(bind=engine)
+
+# Incluir routers
+app.include_router(batch_organize.router)  # Router original funcionando
+# app.include_router(batch_simple.router)  # Router simples funcionando
+# app.include_router(batch_debug.router)  # Router de debug
 
 # ==========================================
 # ENDPOINTS DE GERENCIAMENTO DOCKER/POSTGRES
@@ -234,7 +261,17 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
     agora = datetime.now()
     
     # Para tipos que requerem data
-    if tipo in ["FAT", "NE-CP", "NE-LP", "REL", "RES", "EST"] or tipo.startswith("CCEE-"):
+    if (
+        tipo in [
+            "FAT", "NE-CP", "NE-LP", "NE-VE", "NE-CPC", "NE-LPC",
+            # ICMS compat
+            "DEVEC", "LDO",
+            # regulares
+            "REL", "RES", "EST"
+        ]
+        or tipo.startswith("CCEE-")
+        or tipo.upper().startswith("ICMS-")
+    ):
         if not ano_mes:
             # Se não fornecido, usa o mês atual
             ano_mes = agora.strftime("%Y-%m")
@@ -245,6 +282,13 @@ def gerar_nome_arquivo(tipo: str, ano_mes: Optional[str], descricao: Optional[st
         if not ano_mes:
             ano_mes = agora.strftime("%Y-%m")
         # normaliza para AAAA-MM (trunca dia se vier)
+        ano_mes = ano_mes[:7]
+        nome_base = f"{tipo}-{ano_mes}"
+    
+    # Para minutas (MIN-*) — mesma regra dos DOC-*
+    elif tipo.startswith("MIN-"):
+        if not ano_mes:
+            ano_mes = agora.strftime("%Y-%m")
         ano_mes = ano_mes[:7]
         nome_base = f"{tipo}-{ano_mes}"
     
@@ -286,7 +330,7 @@ def validar_extensao(filename: str) -> str:
     """
     Valida e extrai a extensão do arquivo
     """
-    extensoes_permitidas = ['pdf', 'xlsx', 'xlsm', 'csv', 'docx']
+    extensoes_permitidas = ['pdf', 'xlsx', 'xlsm', 'csv', 'docx', 'xml']
     extensao = filename.split('.')[-1].lower()
     
     if extensao not in extensoes_permitidas:
@@ -305,63 +349,11 @@ def _prev_month_str(dt: datetime) -> str:
 
 
 def detectar_tipo_data_backend(filename: str) -> tuple[str, str | None, str]:
-    """
-    Fallback simples de detecção de tipo/data no backend quando não vier do cliente.
-    Regras (espelhadas do frontend, com limitações por não ter lastModified real):
-      - FAT: nome 'YYYY-MM.ext' → data do nome
-      - NE-CP/NE-LP: contém 'nota'/'cp'/'lp' → data = mês anterior (aproximação)
-      - EST: contém 'estudo' → data = mês atual
-      - REL: contém 'relatorio|relatório' + 'MMM-YY' → converte
-    """
-    nome = filename.lower()
-    # normaliza removendo acentos para comparação robusta
-    try:
-        import unicodedata as _ud
-        nome_norm = ''.join(c for c in _ud.normalize('NFD', nome) if _ud.category(c) != 'Mn')
-    except Exception:
-        nome_norm = nome
-    # FAT – YYYY-MM
-    import re as _re
-    m = _re.match(r"^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx|csv|docx)$", nome)
-    if m:
-        ano_mes = f"{m.group(1)}-{m.group(2)}"
-        return ("FAT", ano_mes, f"Detectado FAT pelo nome: {ano_mes}")
-
-    # Notas – 'nota'/'cp'/'lp' → mês anterior
-    if ("nota" in nome) or ("cp" in nome) or ("lp" in nome):
-        tipo = "NE-CP" if "cp" in nome else ("NE-LP" if "lp" in nome else "NE-CP")
-        ano_mes = _prev_month_str(datetime.now())
-        return (tipo, ano_mes, f"Detectado {tipo} por palavra-chave; usando mês anterior: {ano_mes}")
-
-    # Estudo – contém 'estudo'
-    if "estudo" in nome or "estudos" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("EST", ano_mes, "Detectado EST por palavra-chave; usando mês atual")
-
-    # Documentos específicos (prioridade: aditivo > contrato > procuração; datas conforme dicionário)
-    if ("carta" in nome and ("denúncia" in nome or "denuncia" in nome_norm)):
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-CAR", ano_mes, "Detectado Carta Denúncia; usando mês atual")
-    if "aditivo" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-ADT", ano_mes, "Detectado Aditivo; usando mês atual")
-    if "contrato" in nome:
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-CTR", ano_mes, "Detectado Contrato; usando mês atual")
-    if ("procuração" in nome) or ("procuracao" in nome_norm):
-        ano_mes = datetime.now().strftime("%Y-%m")
-        return ("DOC-PRO", ano_mes, "Detectado Procuração; usando mês atual")
-
-    # Relatórios – 'relatório' + MESES-YY
-    if ("relatorio" in nome) or ("relatório" in nome):
-        m2 = _re.search(r"(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-(\d{2})", nome)
-        if m2:
-            mapa = {"jan": "01", "fev": "02", "mar": "03", "abr": "04", "mai": "05", "jun": "06", "jul": "07", "ago": "08", "set": "09", "out": "10", "nov": "11", "dez": "12"}
-            mes = mapa.get(m2.group(1).lower(), "01")
-            ano = f"20{m2.group(2)}"
-            return ("REL", f"{ano}-{mes}", f"Detectado REL por mês abreviado: {m2.group(0).upper()}")
-
-    return ("DOC-COM", None, "Não identificado – default DOC-COM")
+    """Wrapper centralizado: usa detection.detect_type_and_date; mantém fallback DOC-COM."""
+    tipo, ano_mes, _score, motivo = detect_type_and_date(filename, None)
+    if not tipo:
+        return ("DOC-COM", None, "Não identificado – default DOC-COM")
+    return (tipo, ano_mes, motivo)
 
 def get_db():
     db = SessionLocal()
@@ -385,41 +377,45 @@ async def criar_empresa(payload: schemas.EmpresaCreate, db: Session = Depends(ge
     db.add(emp)
     db.flush()  # garante emp.id para a FK das unidades antes do commit
 
-    # Cria todas as unidades sequencialmente
+    unidades_criadas: List[models.Unidade] = []
+
     for i, nome_unidade in enumerate(payload.unidades, 1):
-        id_unidade = f"{i:03d}"  # 001, 002, 003, etc.
+        id_unidade = f"{i:03d}"
         und = models.Unidade(
             id_unidade=id_unidade,
             nome=nome_unidade.strip(),
             empresa_id=emp.id
         )
         db.add(und)
-        db.flush()  # Para garantir que a unidade foi criada antes de criar as pastas
+        db.flush()
+        unidades_criadas.append(und)
 
-        # Cria estrutura de pastas para esta unidade
-        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {novo_id}"
-        
-        # Garante que a pasta base cliente existe
-        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-        
-        # Cria pasta da empresa se não existe
-        empresa_folder.mkdir(exist_ok=True)
-        
-        # Cria pasta da unidade
-        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
-        unidade_folder.mkdir(exist_ok=True)
-        
-        # Cria todas as subpastas padrão
-        for subpasta in SUBPASTAS_PADRAO:
-            subpasta_path = unidade_folder / subpasta
-            subpasta_path.mkdir(exist_ok=True)
-            
-            # Conforme docs/pastas.html, apenas em "04 CCEE - DRI" criamos subpastas por código
-            if subpasta.startswith("04 CCEE - DRI"):
-                for tipo in CCEE_SUBPASTAS:
-                    tipo_folder = subpasta_path / tipo
-                    tipo_folder.mkdir(exist_ok=True)
-    
+    try:
+        append_empresa(emp.nome, novo_id)
+        for und in unidades_criadas:
+            success = append_filial(
+                nome_empresa=emp.nome,
+                id_empresa=novo_id,
+                nome_unidade=und.nome,
+                id_unidade=und.id_unidade,
+                base_dir=BASE_CLIENTES_PATH,
+            )
+            if not success:
+                logger.warning("Planilha: filial não registrada automaticamente %s-%s", emp.id_empresa, und.id_unidade)
+    except ExcelSyncLockedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ExcelSyncError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+    for und in unidades_criadas:
+        montar_estrutura_unidade(
+            str(BASE_CLIENTES_PATH),
+            f"{emp.nome} - {emp.id_empresa}",
+            f"{und.nome} - {und.id_unidade}"
+        )
     db.commit()
     db.refresh(emp)
     return emp
@@ -435,6 +431,53 @@ def get_config():
 @app.get("/empresas", response_model=list[schemas.EmpresaOut])
 def listar_empresas(db: Session = Depends(get_db)):
     return db.query(models.Empresa).order_by(models.Empresa.id_empresa).all()
+
+@app.put("/empresas/{empresa_pk}", response_model=schemas.EmpresaOut)
+def renomear_empresa(empresa_pk: int, payload: schemas.EmpresaUpdate, db: Session = Depends(get_db)):
+    emp = db.get(models.Empresa, empresa_pk)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Empresa não encontrada")
+
+    novo_nome = (payload.nome or "").strip()
+    if not novo_nome:
+        raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
+
+    if novo_nome != emp.nome:
+        old_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
+        new_path = BASE_CLIENTES_PATH / f"{novo_nome} - {emp.id_empresa}"
+        folder_renamed = False
+        try:
+            BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+            if old_path.exists() and old_path != new_path and not new_path.exists():
+                old_path.rename(new_path)
+                folder_renamed = True
+        except Exception as e:
+            logger.warning("Falha ao renomear pasta da empresa: %s", e)
+
+        try:
+            updated = rename_empresa(emp.id_empresa, novo_nome, base_dir=BASE_CLIENTES_PATH)
+            if not updated:
+                logger.warning("Planilha: empresa %s não localizada para renomear", emp.id_empresa)
+        except ExcelSyncLockedError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da empresa após erro: %s", revert_exc)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da empresa após erro: %s", revert_exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        emp.nome = novo_nome
+        db.add(emp)
+        db.commit()
+        db.refresh(emp)
+    return emp
 
 @app.delete("/empresas/{empresa_pk}", status_code=204)
 def excluir_empresa(empresa_pk: int, db: Session = Depends(get_db)):
@@ -494,28 +537,35 @@ def criar_unidade(payload: schemas.UnidadeCreate, db: Session = Depends(get_db))
         nome=payload.nome.strip(),
         empresa_id=payload.empresa_id
     )
-    db.add(und); db.commit(); db.refresh(und)
-    
-    # Cria pasta da unidade no filesystem
+    db.add(und)
+    db.flush()
+
     try:
-        # garante base
-        BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
-        empresa_folder = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}"
-        empresa_folder.mkdir(parents=True, exist_ok=True)
-        unidade_folder = empresa_folder / f"{und.nome} - {und.id_unidade}"
-        unidade_folder.mkdir(exist_ok=True)
-        
-        # Cria subpastas padrão
-        for subpasta in SUBPASTAS_PADRAO:
-            subpasta_path = unidade_folder / subpasta
-            subpasta_path.mkdir(exist_ok=True)
-            
-            if subpasta.startswith("04 CCEE - DRI"):
-                for tipo in CCEE_SUBPASTAS:
-                    (subpasta_path / tipo).mkdir(exist_ok=True)
+        append_filial(
+            nome_empresa=emp.nome,
+            id_empresa=emp.id_empresa,
+            nome_unidade=und.nome,
+            id_unidade=und.id_unidade,
+            base_dir=BASE_CLIENTES_PATH,
+        )
+    except ExcelSyncLockedError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ExcelSyncError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        montar_estrutura_unidade(
+            str(BASE_CLIENTES_PATH),
+            f"{emp.nome} - {emp.id_empresa}",
+            f"{und.nome} - {und.id_unidade}"
+        )
     except Exception as e:
         print(f"Erro ao criar pastas da unidade: {e}")
-    
+
+    db.commit()
+    db.refresh(und)
     return und
 
 @app.get("/unidades", response_model=list[schemas.UnidadeOut])
@@ -573,12 +623,77 @@ def excluir_unidade(unidade_pk: int, db: Session = Depends(get_db)):
     db.commit()
     return
 
+@app.put("/unidades/{unidade_pk}", response_model=schemas.UnidadeOut)
+def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Session = Depends(get_db)):
+    und = db.get(models.Unidade, unidade_pk)
+    if not und:
+        raise HTTPException(status_code=404, detail="Unidade não encontrada")
+
+    novo_nome = (payload.nome or "").strip()
+    if not novo_nome:
+        raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
+
+    if novo_nome != und.nome:
+        emp = db.get(models.Empresa, und.empresa_id)
+        old_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}" / f"{und.nome} - {und.id_unidade}"
+        new_path = BASE_CLIENTES_PATH / f"{emp.nome} - {emp.id_empresa}" / f"{novo_nome} - {und.id_unidade}"
+        folder_renamed = False
+        try:
+            BASE_CLIENTES_PATH.mkdir(parents=True, exist_ok=True)
+            if old_path.exists() and old_path != new_path and not new_path.exists():
+                old_path.rename(new_path)
+                folder_renamed = True
+            elif (not old_path.exists()) and (not new_path.exists()):
+                new_path.mkdir(parents=True, exist_ok=True)
+                for subpasta in SUBPASTAS_PADRAO:
+                    sp = new_path / subpasta
+                    sp.mkdir(exist_ok=True)
+                    if subpasta.startswith("04 CCEE - DRI"):
+                        for tipo in CCEE_SUBPASTAS:
+                            (sp / tipo).mkdir(exist_ok=True)
+        except Exception as e:
+            logger.warning("Erro ao ajustar pastas da unidade: %s", e)
+
+        try:
+            updated = rename_filial(
+                id_empresa=emp.id_empresa,
+                id_unidade=und.id_unidade,
+                novo_nome_unidade=novo_nome,
+                nome_empresa=emp.nome,
+                base_dir=BASE_CLIENTES_PATH,
+            )
+            if not updated:
+                logger.warning("Planilha: filial %s-%s não localizada para renomear", emp.id_empresa, und.id_unidade)
+        except ExcelSyncLockedError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da filial após erro: %s", revert_exc)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            if folder_renamed and new_path.exists() and not old_path.exists():
+                try:
+                    new_path.rename(old_path)
+                except Exception as revert_exc:
+                    logger.error("Falha ao reverter pasta da filial após erro: %s", revert_exc)
+            raise HTTPException(status_code=500, detail=str(exc))
+
+        und.nome = novo_nome
+        db.add(und)
+        db.commit()
+        db.refresh(und)
+
+    return und
+
 # =====================
 # ITENS
 # =====================
 
 @app.post("/itens", response_model=schemas.ItemOut)
 def criar_item(payload: schemas.ItemCreate, db: Session = Depends(get_db)):
+    # Endpoint desativado temporariamente: registro de itens no banco indisponvel
+    raise HTTPException(404, "endpoint desativado")
     if not db.get(models.Unidade, payload.unidade_id):
         raise HTTPException(400, "unidade_id inválido")
     try:
@@ -685,7 +800,8 @@ async def preview_upload_auto(
                 "empresa": empresa.nome,
                 "unidade": unidade.nome,
                 "valido": True,
-                "erro": None
+                "erro": None,
+                "exists": caminho_completo.exists()
             })
             
         except Exception as e:
@@ -698,7 +814,8 @@ async def preview_upload_auto(
                 "empresa": empresa.nome,
                 "unidade": unidade.nome,
                 "valido": False,
-                "erro": str(e)
+                "erro": str(e),
+                "exists": False
             })
     
     return {
@@ -758,7 +875,8 @@ async def preview_upload(
                 "empresa": f"{empresa.nome} - {empresa.id_empresa}",
                 "unidade": f"{unidade.nome} - {unidade.id_unidade}",
                 "valido": True,
-                "erro": None
+                "erro": None,
+                "exists": caminho_completo.exists()
             })
             
         except Exception as e:
@@ -771,7 +889,8 @@ async def preview_upload(
                 "empresa": f"{empresa.nome} - {empresa.id_empresa}",
                 "unidade": f"{unidade.nome} - {unidade.id_unidade}",
                 "valido": False,
-                "erro": str(e)
+                "erro": str(e),
+                "exists": False
             })
     
     return {
@@ -782,12 +901,27 @@ async def preview_upload(
         "unidade_info": f"{unidade.nome} - {unidade.id_unidade}"
     }
 
+def _next_version_path(p: Path) -> Path:
+    """Gera próximo caminho com sufixo ' vN' (v2, v3, ...) sem sobrescrever."""
+    import re as _re
+    base = p.stem
+    ext = p.suffix
+    # remove sufixo existente para base
+    base_clean = _re.sub(r" v\d+$", "", base)
+    n = 2
+    while True:
+        candidate = p.with_name(f"{base_clean} v{n}{ext}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
 @app.post("/upload/executar-auto")
 async def executar_upload_auto(
     request: Request,
     unidade_id: int = Form(...),
     modo: str = Form(...),
     descricao: Optional[str] = Form(None),
+    conflict_strategy: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
@@ -835,7 +969,31 @@ async def executar_upload_auto(
             
             # Caminho completo do arquivo
             caminho_completo = pasta_destino / novo_nome
-            
+
+            # Se já existir, aplica estratégia de conflito
+            if caminho_completo.exists():
+                if conflict_strategy == 'skip':
+                    resultados.append({
+                        "arquivo_original": file.filename,
+                        "novo_nome": novo_nome,
+                        "pasta_destino": str(pasta_destino.relative_to(BASE_CLIENTES_PATH)),
+                        "sucesso": False,
+                        "tipo": tipo_arquivo,
+                        "erro": "Conflito: arquivo já existe (skip)"
+                    })
+                    continue
+                elif conflict_strategy == 'version':
+                    caminho_completo = _next_version_path(caminho_completo)
+                    novo_nome = caminho_completo.name
+                elif conflict_strategy == 'overwrite':
+                    pass  # mantém caminho para sobrescrever
+                else:
+                    # fallback antigo: timestamp
+                    timestamp = datetime.now().strftime("_%H%M%S")
+                    nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                    novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                    caminho_completo = pasta_destino / novo_nome
+
             # Salva o arquivo
             conteudo = await file.read()
             with open(caminho_completo, "wb") as f:
@@ -875,6 +1033,7 @@ async def executar_upload(
     tipo_arquivo: str = Form(...),
     mes_ano: Optional[str] = Form(None),
     descricao: Optional[str] = Form(None),
+    conflict_strategy: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
@@ -920,11 +1079,26 @@ async def executar_upload(
             
             # Verifica se arquivo já existe
             if caminho_completo.exists():
-                # Adiciona timestamp para evitar conflito
-                timestamp = datetime.now().strftime("_%H%M%S")
-                nome_sem_ext = novo_nome.rsplit('.', 1)[0]
-                novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
-                caminho_completo = pasta_destino / novo_nome
+                if conflict_strategy == 'skip':
+                    resultados.append({
+                        "arquivo_original": file.filename,
+                        "novo_nome": novo_nome,
+                        "caminho_salvo": None,
+                        "sucesso": False,
+                        "erro": "Conflito: arquivo já existe (skip)"
+                    })
+                    continue
+                elif conflict_strategy == 'version':
+                    caminho_completo = _next_version_path(caminho_completo)
+                    novo_nome = caminho_completo.name
+                elif conflict_strategy == 'overwrite':
+                    pass  # sobrescreve
+                else:
+                    # fallback antigo: timestamp
+                    timestamp = datetime.now().strftime("_%H%M%S")
+                    nome_sem_ext = novo_nome.rsplit('.', 1)[0]
+                    novo_nome = f"{nome_sem_ext}{timestamp}.{extensao}"
+                    caminho_completo = pasta_destino / novo_nome
             
             # Salva o arquivo
             with open(caminho_completo, "wb") as buffer:
@@ -932,20 +1106,7 @@ async def executar_upload(
             
             # Cria registro no banco (Item)
             try:
-                id_item = build_item_id(tipo_arquivo, mes_ano)
-                titulo_visivel = descricao or novo_nome
-                
-                item = models.Item(
-                    id_item=id_item,
-                    tipo=tipo_arquivo,
-                    ano_mes=mes_ano,
-                    titulo_visivel=titulo_visivel,
-                    caminho_arquivo=str(caminho_completo),
-                    unidade_id=unidade_id
-                )
-                db.add(item)
-                db.flush()
-                
+                pass
             except Exception as e:
                 print(f"Erro ao criar item no banco: {e}")
                 # Continua mesmo se não conseguir criar o item
@@ -1183,6 +1344,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
     
     synced_count = 0
     updated_count = 0
+    empresas_criadas = []  # (nome, id_empresa)
+    unidades_criadas = []  # (nome_empresa, id_empresa, nome_unidade, id_unidade)
     
     try:
         print(f"Sincronizando pasta: {base_path}")
@@ -1217,16 +1380,17 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                 
                 if not existing:
                     print(f"  Criando nova empresa: {nome_empresa}")
-                    # Cria a empresa no banco
                     emp = models.Empresa(nome=nome_empresa, id_empresa=id_empresa)
                     db.add(emp)
                     db.flush()
+                    empresas_criadas.append((emp.nome, emp.id_empresa))
                     synced_count += 1
-                    empresa_id = emp.id
+                    empresa_model = emp
                 else:
                     print(f"  Empresa já existe: {nome_empresa}")
                     updated_count += 1
-                    empresa_id = existing.id
+                    empresa_model = existing
+                empresa_id = empresa_model.id
                 
                 # Verifica subpastas (unidades) e sincroniza
                 unidades_folders = list(folder.iterdir())
@@ -1258,6 +1422,8 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
                                 empresa_id=empresa_id
                             )
                             db.add(und)
+                            db.flush()
+                            unidades_criadas.append((empresa_model.nome, empresa_model.id_empresa, nome_unidade, id_unidade))
                         
                         # Garante que todas as subpastas padrão existem
                         for subpasta in SUBPASTAS_PADRAO:
@@ -1273,6 +1439,25 @@ async def sincronizar_empresas(request: SyncRequest, db: Session = Depends(get_d
             else:
                 print(f"  Pasta ignorada (formato inválido): {folder_name}")
         
+        # Atualiza planilha mestre antes do commit
+        try:
+            for nome_emp, id_emp in empresas_criadas:
+                append_empresa(nome_emp, id_emp)
+            for nome_emp, id_emp, nome_uni, id_uni in unidades_criadas:
+                append_filial(
+                    nome_empresa=nome_emp,
+                    id_empresa=id_emp,
+                    nome_unidade=nome_uni,
+                    id_unidade=id_uni,
+                    base_dir=BASE_CLIENTES_PATH,
+                )
+        except ExcelSyncLockedError as exc:
+            db.rollback()
+            raise HTTPException(status_code=503, detail=str(exc))
+        except ExcelSyncError as exc:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(exc))
+
         # Commit todas as mudanças
         db.commit()
         print(f"Sincronização concluída: {synced_count} novas, {updated_count} existentes")

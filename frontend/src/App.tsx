@@ -2,9 +2,11 @@ import { BrowserRouter as Router, HashRouter, Routes, Route } from 'react-router
 import { useEffect } from 'react';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
-// Rotas simplificadas: apenas página de Empresas por enquanto.
+// Rotas
 import EmpresasPage from './pages/Empresas';
+import BatchOrganize from './pages/BatchOrganize';
 import TitleBar from './components/TitleBar';
+import Sidebar from './components/Sidebar';
 
 function App() {
   // Detectar se está no Electron para usar HashRouter
@@ -12,6 +14,21 @@ function App() {
   const RouterComponent = isElectron ? HashRouter : Router;
 
   useEffect(() => {
+    // Evita abrir arquivos/pastas quando o drop NÃO for dentro de uma área do app
+    const onDragOver = (e: DragEvent) => {
+      // Só bloqueia se não estiver sobre um elemento com data-allow-drop
+      const path = (e.composedPath && e.composedPath()) || [] as any;
+      const insideAllowed = Array.isArray(path) && path.some((n: any) => n?.getAttribute?.('data-allow-drop') === 'true');
+      if (!insideAllowed) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      const path = (e.composedPath && e.composedPath()) || [] as any;
+      const insideAllowed = Array.isArray(path) && path.some((n: any) => n?.getAttribute?.('data-allow-drop') === 'true');
+      if (!insideAllowed) e.preventDefault();
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+
     if (!window.electronAPI) return;
     const unsub = window.electronAPI.onUpdateEvent?.((evt) => {
       switch (evt.status) {
@@ -44,18 +61,26 @@ function App() {
           break;
       }
     });
-    return () => { try { unsub && unsub(); } catch {} };
+    return () => {
+      try { unsub && unsub(); } catch {}
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
   }, []);
 
   return (
     <>
       <TitleBar />
       <RouterComponent>
-        <div className={`App ${isElectron ? 'pt-8' : ''}`}>
-          <Routes>
-            <Route path="/" element={<EmpresasPage />} />
-            <Route path="/empresas" element={<EmpresasPage />} />
-          </Routes>
+        <div className={`App flex h-screen ${isElectron ? 'pt-8' : ''}`}>
+          <Sidebar />
+          <main className="flex-1 overflow-auto">
+            <Routes>
+              <Route path="/" element={<EmpresasPage />} />
+              <Route path="/empresas" element={<EmpresasPage />} />
+              <Route path="/batch-organize" element={<BatchOrganize />} />
+            </Routes>
+          </main>
         </div>
       </RouterComponent>
       <Toaster richColors position="top-right" />

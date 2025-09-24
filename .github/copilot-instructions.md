@@ -16,7 +16,7 @@
 - Unidade → `id_unidade` = 3 dígitos zero-padded por empresa (reinicia em cada empresa).
 - Item → `id_item` depende do tipo:
   - FAT: `FAT-AAAA-MM`
-  - NE: `NE-CP-AAAA-MM` ou `NE-LP-AAAA-MM` (CP e LP na MESMA pasta)
+  - NE: `NE-CP-AAAA-MM`, `NE-LP-AAAA-MM` ou `NE-VE-AAAA-MM` (todas juntas na MESMA pasta)
   - REL: `REL-AAAA-MM`
   - EST: `EST-AAAA-MM`
   - DOC-<SUB>: SUB ∈ {CTR, ADT, CAD, PRO, CAR, COM, LIC}  
@@ -30,7 +30,7 @@
 - Subpastas padrão na unidade (com numeração sequencial):
   - `01 Relatórios e Resultados/`
   - `02 Faturas/`
-  - `03 Notas de Energia/` (CP e LP juntos)
+  - `03 Notas de Energia/` (CP, LP e VE juntos)
   - `04 CCEE - DRI/` com **uma pasta por tipo** (ex.: `CFZ003/`, `GFN001/`…)
     - Códigos atuais: CFZ003, CFZ004, GFN001, LFN001, LFRCA001, LFRES001, PEN001, SUM001, BOLETOCA, ND
   - `05 BM Energia/`
@@ -44,7 +44,7 @@
 
 ## Validações (regex sugeridas)
 - FAT: `^FAT-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$`
-- NE: `^NE-(CP|LP)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$`
+- NE: `^NE-(CP|LP|VE)-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$`
 - REL: `^REL-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$`
 - EST: `^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$`
 - DOC: `^DOC-[A-Z]{3}-.+\.(pdf|docx|xlsx)$`

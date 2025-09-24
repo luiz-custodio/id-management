@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown, Edit2 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Empresa, Unidade } from '../lib/api';
 
@@ -81,9 +81,31 @@ const EmpresasPage: React.FC = () => {
   const [selectedUnidadeNome, setSelectedUnidadeNome] = useState<string>('');
   const [tipoArquivo, setTipoArquivo] = useState<string>('');
   const [cceeSubtipo, setCceeSubtipo] = useState<string>(''); // Novo estado para subtipo CCEE
-  const [mesAno, setMesAno] = useState<string>('');
+  // Mês/Ano com persistência na sessão (até reabrir o app)
+  const [mesAno, setMesAnoState] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('idms.mesAno') || '';
+    } catch {
+      return '';
+    }
+  });
+  const setMesAno = (value: string) => {
+    setMesAnoState(value);
+    try {
+      if (value) {
+        sessionStorage.setItem('idms.mesAno', value);
+      } else {
+        sessionStorage.removeItem('idms.mesAno');
+      }
+    } catch {
+      // Ignora erros de acesso ao sessionStorage
+    }
+  };
   const [descricao, setDescricao] = useState<string>('');
   const [mostrarDataOpcional, setMostrarDataOpcional] = useState<boolean>(false);
+  // Nova: Data automática (baseada nos arquivos selecionados)
+  const [autoData, setAutoData] = useState<boolean>(false);
+  const [autoDataMode, setAutoDataMode] = useState<'mod' | 'mod-1' | 'folder'>('mod');
   const [autoDeteccao, setAutoDeteccao] = useState<boolean>(false);
   const [arquivosAnalisados, setArquivosAnalisados] = useState<Array<{
     file: File;
@@ -98,6 +120,8 @@ const EmpresasPage: React.FC = () => {
   const [uploadPreview, setUploadPreview] = useState<any>(null);
   const [showUploadPreview, setShowUploadPreview] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // UI compacto: controlar exibição da lista detalhada de arquivos
+  const [mostrarListaArquivos, setMostrarListaArquivos] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Ordenação
@@ -114,9 +138,11 @@ const EmpresasPage: React.FC = () => {
     });
   };
 
-  // Função para obter mês/ano atual no formato YYYY-MM
+  // Função para obter mês/ano ANTERIOR no formato YYYY-MM
   const getCurrentMonth = () => {
     const now = new Date();
+    // Subtrai 1 mês da data atual
+    now.setMonth(now.getMonth() - 1);
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
@@ -127,9 +153,16 @@ const EmpresasPage: React.FC = () => {
     { value: 'FAT', label: 'Fatura', requireDate: true },
     { value: 'NE-CP', label: 'Nota de Energia - CP', requireDate: true },
     { value: 'NE-LP', label: 'Nota de Energia - LP', requireDate: true },
+    { value: 'NE-CPC', label: 'Nota de Energia - CPC', requireDate: true },
+    { value: 'NE-LPC', label: 'Nota de Energia - LPC', requireDate: true },
+    { value: 'NE-VE', label: 'Nota de Energia - Venda', requireDate: true },
     { value: 'REL', label: 'Relatório', requireDate: true },
     { value: 'RES', label: 'Resumo', requireDate: true },
     { value: 'EST', label: 'Estudo', requireDate: false },
+    // ICMS (novos)
+    { value: 'ICMS-DEVEC', label: 'ICMS - DEVEC', requireDate: true },
+    { value: 'ICMS-LDO', label: 'ICMS - LDO', requireDate: true },
+    { value: 'ICMS-REC', label: 'ICMS - REC', requireDate: true },
     { value: 'DOC-CTR', label: 'Documento - Contrato', requireDate: false },
     { value: 'DOC-ADT', label: 'Documento - Aditivo', requireDate: false },
     { value: 'DOC-CAD', label: 'Documento - Cadastro', requireDate: false },
@@ -146,7 +179,7 @@ const EmpresasPage: React.FC = () => {
     { value: 'CFZ004', label: 'CFZ004' },
     { value: 'GFN001', label: 'GFN001' },
     { value: 'LFN001', label: 'LFN001' },
-    { value: 'LFRCA001', label: 'LFRCA001' },
+    { value: 'LFRCAP001', label: 'LFRCAP001' },
     { value: 'LFRES001', label: 'LFRES001' },
     { value: 'PEN001', label: 'PEN001' },
     { value: 'SUM001', label: 'SUM001' },
@@ -168,6 +201,97 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  // Helper: computa AAAA-MM a partir dos arquivos selecionados
+  const computeAutoMesAnoFromFiles = (files: File[], mode: 'mod'|'mod-1'|'folder'): string => {
+    try {
+      if (!files || files.length === 0) return '';
+      if (mode === 'folder') {
+        const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
+        const extractFromPath = (file: File): string => {
+          const anyFile: any = file as any;
+          const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
+          if (!pRaw) return '';
+          const p = pRaw.replace(/\\/g, '/');
+          const segs = p.split('/').filter(Boolean);
+          for (let i = segs.length - 2; i >= 0; i--) {
+            const seg = segs[i];
+            const m = seg.match(folderPattern);
+            if (m) return `${m[1]}-${m[2]}`;
+          }
+          return '';
+        };
+        const values = new Set<string>();
+        for (const f of files) {
+          const v = extractFromPath(f);
+          if (v) values.add(v);
+        }
+        return values.size === 1 ? Array.from(values)[0] : '';
+      } else {
+        // Usa o arquivo mais recente (modificação mais nova) do lote
+        let latest = files[0].lastModified || Date.now();
+        for (const f of files) {
+          if ((f.lastModified || 0) > latest) latest = f.lastModified;
+        }
+        const d = new Date(latest);
+        if (mode === 'mod-1') d.setMonth(d.getMonth() - 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+      }
+    } catch {
+      return '';
+    }
+  };
+
+  // Data por arquivo, conforme modo
+  const computeMesAnoForFile = (file: File, mode: 'mod'|'mod-1'|'folder'): string => {
+    try {
+      if (mode === 'folder') {
+        const anyFile: any = file as any;
+        const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
+        if (pRaw) {
+          const p = pRaw.replace(/\\/g, '/');
+          const segs = p.split('/').filter(Boolean);
+          const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
+          for (let i = segs.length - 2; i >= 0; i--) {
+            const seg = segs[i];
+            const m = seg.match(folderPattern);
+            if (m) return `${m[1]}-${m[2]}`;
+          }
+        }
+        return '';
+      }
+      const d = new Date(file.lastModified || Date.now());
+      if (mode === 'mod-1') d.setMonth(d.getMonth() - 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      return `${y}-${m}`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Mantém mesAno sincronizado quando data automática está habilitada
+  useEffect(() => {
+    if (autoData) {
+      const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+      setMesAno(computed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoData, autoDataMode, selectedFiles]);
+
+  // Quando autoData estiver habilitada para tipos que NÃO exigem data,
+  // garante que o campo opcional apareça e seja preenchido automaticamente
+  useEffect(() => {
+    const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
+    if (!tipoSelecionado) return;
+    if (!tipoSelecionado.requireDate && autoData) {
+      setMostrarDataOpcional(true);
+      const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+      if (computed) setMesAno(computed);
+    }
+  }, [autoData, autoDataMode, selectedFiles, tipoArquivo]);
+
   // Handler para mudança de tipo de arquivo
   const handleTipoArquivoChange = (valor: string) => {
     setTipoArquivo(valor);
@@ -175,15 +299,18 @@ const EmpresasPage: React.FC = () => {
     setMostrarDataOpcional(false); // Reset do campo opcional
     setArquivosAnalisados([]); // Reset da análise automática
     
-    // Se o tipo requer data e não há data definida, define para o mês atual
+    // Se o tipo requer data
     const tipoSelecionado = tiposArquivo.find(t => t.value === valor);
-    if (tipoSelecionado?.requireDate && !mesAno) {
-      setMesAno(getCurrentMonth());
+    if (tipoSelecionado?.requireDate) {
+      if (autoData) {
+        const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+        setMesAno(computed);
+      } else if (!mesAno) {
+        // Default manual: mês anterior
+        setMesAno(getCurrentMonth());
+      }
     }
-    // Se o tipo não requer data, limpa o campo
-    else if (tipoSelecionado && !tipoSelecionado.requireDate) {
-      setMesAno('');
-    }
+    // Se o tipo não requer data, mantemos o valor atual para persistir a preferência
   };
 
   // Função para lidar com mudança do checkbox de auto-detecção
@@ -191,11 +318,11 @@ const EmpresasPage: React.FC = () => {
     setAutoDeteccao(ativado);
     
     if (ativado) {
-      // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
-      setTipoArquivo('');
-      setCceeSubtipo('');
-      setMesAno('');
-      setMostrarDataOpcional(false);
+        // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
+        setTipoArquivo('');
+        setCceeSubtipo('');
+        setMostrarDataOpcional(false);
+        setAutoData(false); // Data automática não se aplica no modo de detecção automática
       
       // Se há arquivos, analisa automaticamente
       if (selectedFiles.length > 0) {
@@ -212,6 +339,8 @@ const EmpresasPage: React.FC = () => {
   const analisarArquivoAutomaticamente = (file: File) => {
     const nome = file.name.toLowerCase();
     const nomeNorm = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tokens = (nomeNorm.match(/[a-z0-9]+/g) || []);
+    const tset = new Set(tokens);
     let tipoDetectado = '';
     let dataDetectada = '';
     let confianca = 0;
@@ -227,17 +356,26 @@ const EmpresasPage: React.FC = () => {
       motivo = `Fatura detectada: nome contém apenas data (${dataDetectada})`;
     }
     
-    // REGRA 2: Notas de Energia - contém "nota", "cp" ou "lp"
-    else if (nome.includes('nota') || nome.includes('cp') || nome.includes('lp')) {
-      if (nome.includes('cp')) {
+    // REGRA 2: Notas de Energia - tokens (evita falsos positivos)
+    else if (tset.has('nota') || tset.has('cpc') || tset.has('lpc') || tset.has('cp') || tset.has('lp') || tset.has('venda') || tset.has('ve')) {
+      if (tset.has('cpc')) {
+        tipoDetectado = 'NE-CPC';
+        motivo = 'Nota de Energia CPC: token "cpc"';
+      } else if (tset.has('lpc')) {
+        tipoDetectado = 'NE-LPC';
+        motivo = 'Nota de Energia LPC: token "lpc"';
+      } else if (tset.has('cp')) {
         tipoDetectado = 'NE-CP';
-        motivo = 'Nota de Energia CP detectada: nome contém "CP"';
-      } else if (nome.includes('lp')) {
+        motivo = 'Nota de Energia CP: token "cp"';
+      } else if (tset.has('lp')) {
         tipoDetectado = 'NE-LP';
-        motivo = 'Nota de Energia LP detectada: nome contém "LP"';
+        motivo = 'Nota de Energia LP: token "lp"';
+      } else if (tset.has('venda') || tset.has('ve')) {
+        tipoDetectado = 'NE-VE';
+        motivo = 'Nota de Energia Venda: token "venda/ve"';
       } else {
-        tipoDetectado = 'NE-CP'; // Padrão se só tem "nota"
-        motivo = 'Nota de Energia detectada: nome contém "nota"';
+        tipoDetectado = 'NE-CP'; // padrão se apenas "nota"
+        motivo = 'Nota de Energia: token "nota"';
       }
       
       // Data = data de modificação menos 1 mês
@@ -248,6 +386,28 @@ const EmpresasPage: React.FC = () => {
       dataDetectada = `${ano}-${mes}`;
       confianca = 85;
       motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
+    }
+    
+    // NOVA REGRA: ICMS (DEVEC/LDO/REC) – contém 'devec', 'ldo' ou 'rec' no nome → usar mês anterior à modificação
+    else if (nome.includes('devec') || nome.includes('ldo') || nome.includes('rec')) {
+      const dataMod = new Date(file.lastModified);
+      dataMod.setMonth(dataMod.getMonth() - 1);
+      const ano = dataMod.getFullYear();
+      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
+      dataDetectada = `${ano}-${mes}`;
+      confianca = 85;
+      if (nome.includes('devec')) {
+        tipoDetectado = 'ICMS-DEVEC';
+        motivo = 'ICMS-DEVEC detectado no nome - usando mês anterior';
+      } else {
+        if (nome.includes('ldo')) {
+          tipoDetectado = 'ICMS-LDO';
+          motivo = 'ICMS-LDO detectado no nome - usando mês anterior';
+        } else {
+          tipoDetectado = 'ICMS-REC';
+          motivo = 'ICMS-REC detectado no nome - usando mês anterior';
+        }
+      }
     }
     
     // REGRA 3: Estudo - contém "estudo" no nome → usa data de modificação
@@ -261,12 +421,15 @@ const EmpresasPage: React.FC = () => {
       motivo = 'Estudo detectado: nome contém "estudo" - usando data de modificação';
     }
 
-    // REGRA 4: Documentos específicos (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo
+    // REGRA 4: Documentos/Minutas (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo (+ cadastro/comunicado/licença)
     else if (
-      nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))
-      || nome.includes('aditivo')
-      || nome.includes('contrato')
-      || nome.includes('procuração') || nomeNorm.includes('procuracao')
+      (tset.has('carta') && (tset.has('denuncia')))
+      || tset.has('aditivo')
+      || tset.has('contrato')
+      || tset.has('procuracao') || nome.includes('procuração')
+      || tset.has('cadastro')
+      || tset.has('comunicado')
+      || tset.has('licenca') || nome.includes('licença')
     ) {
       const dataMod = new Date(file.lastModified);
       const ano = dataMod.getFullYear();
@@ -275,18 +438,33 @@ const EmpresasPage: React.FC = () => {
       dataDetectada = `${ano}-${mes}`;
       confianca = 90;
 
-      if (nome.includes('carta') && (nome.includes('denúncia') || nomeNorm.includes('denuncia'))) {
-        tipoDetectado = 'DOC-CAR';
-        motivo = 'Documento detectado: "Carta denúncia" - usando mês/ano da modificação';
-      } else if (nome.includes('aditivo')) {
-        tipoDetectado = 'DOC-ADT';
-        motivo = 'Documento detectado: "Aditivo" - usando mês/ano da modificação';
-      } else if (nome.includes('contrato')) {
-        tipoDetectado = 'DOC-CTR';
-        motivo = 'Documento detectado: "Contrato" - usando mês/ano da modificação';
-      } else if (nome.includes('procuração') || nomeNorm.includes('procuracao')) {
-        tipoDetectado = 'DOC-PRO';
-        motivo = 'Documento detectado: "Procuração" - usando mês/ano da modificação';
+      const isMinuta = tset.has('minuta') || tset.has('minutas') || tset.has('min');
+      const pref = isMinuta ? 'MIN' : 'DOC';
+
+      if (tset.has('carta') && tset.has('denuncia')) {
+        tipoDetectado = `${pref}-CAR`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Carta denúncia" - usando mês/ano da modificação`;
+      } else if (tset.has('aditivo')) {
+        tipoDetectado = `${pref}-ADT`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Aditivo" - usando mês/ano da modificação`;
+      } else if (tset.has('contrato')) {
+        tipoDetectado = `${pref}-CTR`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Contrato" - usando mês/ano da modificação`;
+      } else if (tset.has('procuracao') || nome.includes('procuração')) {
+        tipoDetectado = `${pref}-PRO`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Procuração" - usando mês/ano da modificação`;
+      } else if (tset.has('cadastro')) {
+        tipoDetectado = `${pref}-CAD`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Cadastro" - usando mês/ano da modificação`;
+        confianca = 70;
+      } else if (tset.has('comunicado')) {
+        tipoDetectado = `${pref}-COM`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Comunicado" - usando mês/ano da modificação`;
+        confianca = 70;
+      } else if (tset.has('licenca') || nome.includes('licença')) {
+        tipoDetectado = `${pref}-LIC`;
+        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Licença" - usando mês/ano da modificação`;
+        confianca = 70;
       }
     }
 
@@ -315,10 +493,10 @@ const EmpresasPage: React.FC = () => {
         confianca = 90;
         motivo = `Relatório detectado: nome contém "relatório" e data ${matchRelatorio[0].toUpperCase()}`;
       } else {
-        // Se não encontrou data no nome, usar data atual
+        // Se não encontrou data no nome, usar mês anterior
         dataDetectada = getCurrentMonth();
         confianca = 70;
-        motivo = 'Relatório detectado: nome contém "relatório" - usando data atual';
+        motivo = 'Relatório detectado: nome contém "relatório" - usando mês anterior';
       }
     }
     
@@ -437,6 +615,44 @@ const EmpresasPage: React.FC = () => {
       alert('Erro ao criar unidade. Tente novamente.');
     } finally {
       setCreatingUnidade(false);
+    }
+  };
+
+  // Renomear empresa
+  const handleRenameEmpresa = async (empresa: Empresa) => {
+    const atual = empresa.nome;
+    const novo = window.prompt('Novo nome da empresa:', atual)?.trim();
+    if (!novo || novo === atual) return;
+    try {
+      await api.renomearEmpresa(empresa.id, novo);
+      await fetchEmpresas();
+      if (expandedEmpresas.has(empresa.id)) {
+        await loadUnidadesEmpresa(empresa.id);
+      }
+      // Se a empresa renomeada está selecionada, atualiza o nome exibido na sidebar
+      if (selectedEmpresa === String(empresa.id)) {
+        setSelectedEmpresaNome(novo);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear empresa';
+      alert(msg);
+    }
+  };
+
+  // Renomear unidade
+  const handleRenameUnidade = async (unidadeId: number, nomeAtual: string, empresaId: number) => {
+    const novo = window.prompt('Novo nome da unidade:', nomeAtual)?.trim();
+    if (!novo || novo === nomeAtual) return;
+    try {
+      await api.renomearUnidade(unidadeId, novo);
+      await loadUnidadesEmpresa(empresaId);
+      // Se a unidade renomeada está selecionada, atualiza o nome exibido na sidebar
+      if (selectedEmpresa === String(empresaId) && selectedUnidade === String(unidadeId)) {
+        setSelectedUnidadeNome(novo);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear unidade';
+      alert(msg);
     }
   };
 
@@ -651,6 +867,12 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  // Limpar todos os arquivos selecionados (e análises automáticas)
+  const clearAllFiles = () => {
+    setSelectedFiles([]);
+    setArquivosAnalisados([]);
+  };
+
   const handleUpload = async () => {
     if (!selectedUnidade || selectedFiles.length === 0) {
       setError('Selecione uma unidade e adicione arquivos');
@@ -701,22 +923,47 @@ const EmpresasPage: React.FC = () => {
       } else {
         // Verifica se data é obrigatória para o tipo selecionado
         const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-        if (tipoSelecionado?.requireDate && !mesAno) {
-          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
-          return;
+        if (tipoSelecionado?.requireDate) {
+          if (autoData) {
+            const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+            if (computed && computed !== mesAno) setMesAno(computed);
+            // Não exigir mesAno quando data automática está ativa; datas serão por arquivo
+          } else if (!mesAno) {
+            setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+            return;
+          }
         }
         
         // Para CCEE, combina tipo e subtipo
         const tipoFinal = tipoArquivo === 'CCEE' ? `CCEE-${cceeSubtipo}` : tipoArquivo;
         
         // Modo manual normal
-        preview = await api.previewUpload(
-          parseInt(selectedUnidade), 
-          tipoFinal, 
-          mesAno || null, 
-          descricao || null, 
-          fileList.files
-        );
+        if (autoData) {
+          // Usar caminho AUTO com tipo fixo e data por arquivo
+          const filesWithAnalysis = selectedFiles.map((file) => ({
+            file,
+            tipoDetectado: tipoFinal,
+            dataDetectada: computeMesAnoForFile(file, autoDataMode) || computeMesAnoForFile(file, 'mod')
+          }));
+          // Validação: pelo menos uma data válida
+          if (filesWithAnalysis.some(x => !x.dataDetectada)) {
+            setError(autoDataMode === 'folder' ? 'Alguns arquivos não têm pasta no formato AAAA-MM. Ajuste a base ou a estrutura.' : 'Falha ao calcular data automática para alguns arquivos.');
+            return;
+          }
+          preview = await api.previewUploadAuto(
+            parseInt(selectedUnidade),
+            filesWithAnalysis,
+            descricao || null
+          );
+        } else {
+          preview = await api.previewUpload(
+            parseInt(selectedUnidade), 
+            tipoFinal, 
+            mesAno || null, 
+            descricao || null, 
+            fileList.files
+          );
+        }
       }
       
       setUploadPreview(preview);
@@ -730,7 +977,7 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  const executarUpload = async () => {
+  const executarUpload = async (conflictStrategy?: 'overwrite'|'version'|'skip') => {
     if (!selectedUnidade || selectedFiles.length === 0) {
       return;
     }
@@ -771,14 +1018,21 @@ const EmpresasPage: React.FC = () => {
         result = await api.executarUploadAuto(
           parseInt(selectedUnidade),
           filesWithAnalysis,
-          descricao || null
+          descricao || null,
+          conflictStrategy
         );
       } else {
         // Verifica se data é obrigatória para o tipo selecionado
         const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
-        if (tipoSelecionado?.requireDate && !mesAno) {
-          setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
-          return;
+        if (tipoSelecionado?.requireDate) {
+          if (autoData) {
+            const computed = computeAutoMesAnoFromFiles(selectedFiles, autoDataMode);
+            if (computed && computed !== mesAno) setMesAno(computed);
+            // Não exigir mesAno quando data automática está ativa; datas serão por arquivo
+          } else if (!mesAno) {
+            setError('Data (Mês/Ano) é obrigatória para este tipo de arquivo');
+            return;
+          }
         }
         
         // Para CCEE, combina tipo e subtipo
@@ -788,13 +1042,33 @@ const EmpresasPage: React.FC = () => {
         const fileList = new DataTransfer();
         selectedFiles.forEach(file => fileList.items.add(file));
         
-        result = await api.executarUpload(
-          parseInt(selectedUnidade), 
-          tipoFinal, 
-          mesAno || null, 
-          descricao || null, 
-          fileList.files
-        );
+        if (autoData) {
+          // Usar caminho AUTO com tipo fixo e data por arquivo
+          const filesWithAnalysis = selectedFiles.map((file) => ({
+            file,
+            tipoDetectado: tipoFinal,
+            dataDetectada: computeMesAnoForFile(file, autoDataMode) || computeMesAnoForFile(file, 'mod')
+          }));
+          if (filesWithAnalysis.some(x => !x.dataDetectada)) {
+            setError(autoDataMode === 'folder' ? 'Alguns arquivos não têm pasta no formato AAAA-MM. Ajuste a base ou a estrutura.' : 'Falha ao calcular data automática para alguns arquivos.');
+            return;
+          }
+          result = await api.executarUploadAuto(
+            parseInt(selectedUnidade),
+            filesWithAnalysis,
+            descricao || null,
+            conflictStrategy
+          );
+        } else {
+          result = await api.executarUpload(
+            parseInt(selectedUnidade), 
+            tipoFinal, 
+            mesAno || null, 
+            descricao || null, 
+            fileList.files,
+            conflictStrategy
+          );
+        }
       }
       
       // Limpa formulário
@@ -802,7 +1076,7 @@ const EmpresasPage: React.FC = () => {
       setArquivosAnalisados([]);
       setTipoArquivo('');
       setCceeSubtipo('');
-      setMesAno('');
+      // Não limpa o mês para manter a escolha durante a sessão
       setDescricao('');
       setMostrarDataOpcional(false);
       setShowUploadPreview(false);
@@ -923,42 +1197,41 @@ const EmpresasPage: React.FC = () => {
         </div>
         
         {/* Área de conteúdo principal com scroll */}
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <div className="flex-1 overflow-y-auto space-y-3">
           {/* Título e Unidade selecionada */}
           <div className="space-y-4">
             <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
             
             {/* Mostra a unidade selecionada se houver com animação */}
             {selectedUnidade && (
-              <div className="animate-fade-in-down bg-blue-800/15 border border-blue-700/30 rounded-lg p-4 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm shadow-lg shadow-blue-900/20">
-                <p className="text-xs text-blue-300 mb-2 uppercase tracking-wider font-medium">Unidade Selecionada</p>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-white">
-                    {selectedEmpresaNome}
-                  </p>
-                  <p className="text-xs text-blue-200 flex items-center gap-2">
-                    <MapPin className="w-3 h-3 text-blue-400" />
-                    {selectedUnidadeNome} 
-                    <span className="text-blue-400">• {selectedUnidade}</span>
-                  </p>
+              <div className="animate-fade-in-down bg-blue-800/10 border border-blue-700/30 rounded-md px-3 py-2 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MapPin className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                    <span className="text-xs font-medium text-blue-100 truncate">
+                      {selectedEmpresaNome} • {selectedUnidadeNome}
+                    </span>
+                    <span className="text-[10px] text-blue-400 flex-shrink-0">#{selectedUnidade}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedEmpresa('');
+                      setSelectedUnidade('');
+                      setSelectedEmpresaNome('');
+                      setSelectedUnidadeNome('');
+                    }}
+                    className="text-[11px] text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                    title="Limpar seleção"
+                  >
+                    <X className="w-3 h-3" />
+                    Limpar
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedEmpresa('');
-                    setSelectedUnidade('');
-                  setSelectedEmpresaNome('');
-                  setSelectedUnidadeNome('');
-                }}
-                className="mt-3 text-xs text-red-400 hover:text-red-300 transition-all duration-200 flex items-center gap-1 hover:gap-2"
-              >
-                <X className="w-3 h-3" />
-                Limpar seleção
-              </button>
-            </div>
-          )}
+              </div>
+            )}
 
           {/* Checkbox de Auto-Detecção */}
-          <div className="mb-3">
+          <div className="mb-2">
             <label className="flex items-center gap-2 cursor-pointer text-xs">
               <input 
                 type="checkbox" 
@@ -973,17 +1246,16 @@ const EmpresasPage: React.FC = () => {
             
             {/* Regras de detecção automática (aparece quando ativada) */}
             {autoDeteccao && (
-              <div className="mt-2 ml-5 text-xs text-slate-500 leading-relaxed">
-                <div className="opacity-75">
-                  <strong className="text-slate-400">Regras de detecção:</strong><br/>
+              <details className="mt-1 ml-5 text-xs text-slate-500">
+                <summary className="cursor-pointer text-slate-400 hover:text-slate-300">Ver regras</summary>
+                <div className="mt-1 opacity-75 leading-relaxed">
                   • <span className="text-blue-400">Faturas:</span> data no nome (YYYY-MM). Ex.: 2025-08.pdf/xlsx/xlsm<br/>
-                  • <span className="text-green-400">Notas:</span> contém "nota", "CP" ou "LP" (data = modificação menos 1 mês)<br/>
+                  • <span className="text-green-400">Notas:</span> contém "nota", "CP" ou "LP" (data = modificação - 1 mês)<br/>
                   • <span className="text-amber-400">Estudos:</span> contém "estudo" (data = mês/ano da modificação)<br/>
                   • <span className="text-yellow-400">Relatórios:</span> contém "relatório" + mês abreviado, ex.: JUL-25<br/>
                   • <span className="text-cyan-400">Docs:</span> "Carta denúncia", "Contrato", "Procuração", "Aditivo" (data = mês/ano da modificação)
-                  • <span className="text-slate-400">Não identificado:</span> seleção manual necessária
                 </div>
-              </div>
+              </details>
             )}
           </div>
 
@@ -1051,6 +1323,33 @@ const EmpresasPage: React.FC = () => {
           {/* Campo de Mês/Ano condicional */}
           {tipoArquivo && (
             <div className="animate-fade-in-down">
+              {!autoDeteccao && (
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 text-xs text-blue-300">
+                    <input
+                      type="checkbox"
+                      className="w-3 h-3 text-blue-500 bg-slate-700 border-slate-600 rounded focus:ring-blue-500 focus:ring-1"
+                      checked={autoData}
+                      onChange={(e) => setAutoData(e.target.checked)}
+                    />
+                    Data automatica
+                  </label>
+                  {autoData && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">Base:</span>
+                      <select
+                        value={autoDataMode}
+                        onChange={(e) => setAutoDataMode((e.target.value as 'mod'|'mod-1'|'folder'))}
+                        className="text-xs bg-slate-800/70 border border-blue-800/40 rounded px-2 py-1 text-blue-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      >
+                        <option value="mod">Modificacao</option>
+                        <option value="mod-1">Modificacao - 1 mes</option>
+                        <option value="folder">Pasta (AAAA-MM)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
               {(() => {
                 const tipoSelecionado = tiposArquivo.find(t => t.value === tipoArquivo);
                 const isRequired = tipoSelecionado?.requireDate || false;
@@ -1066,9 +1365,9 @@ const EmpresasPage: React.FC = () => {
                         type="month"
                         value={mesAno}
                         onChange={(e) => setMesAno(e.target.value)}
-                        disabled={autoDeteccao}
+                        disabled={autoDeteccao || autoData}
                         className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm ${
-                          autoDeteccao ? 'opacity-50 cursor-not-allowed' : ''
+                          (autoDeteccao || autoData) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       />
                       {!mesAno && (
@@ -1113,7 +1412,8 @@ const EmpresasPage: React.FC = () => {
                           type="month"
                           value={mesAno}
                           onChange={(e) => setMesAno(e.target.value)}
-                          className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+                          disabled={autoData}
+                          className={`w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm ${autoData ? 'opacity-50 cursor-not-allowed' : ''}`}
                           placeholder="Opcional"
                         />
                       </div>
@@ -1124,14 +1424,14 @@ const EmpresasPage: React.FC = () => {
             </div>
           )}
 
-          {/* Descrição */}
+          {/* Descrição (compacta) */}
           <div>
-            <label className="block text-xs text-blue-300 mb-2 font-medium">Descrição (Opcional)</label>
-            <textarea
+            <label className="block text-xs text-blue-300 mb-1 font-medium">Descrição (Opcional)</label>
+            <input
+              type="text"
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              rows={2}
-              className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 resize-none transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
+              className="w-full bg-slate-800/70 border border-blue-800/40 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-500 transition-all duration-200 hover:border-blue-700/60 backdrop-blur-sm"
               placeholder="Adicione uma descrição..."
             />
           </div>
@@ -1139,7 +1439,7 @@ const EmpresasPage: React.FC = () => {
 
         {/* Área de Drag and Drop */}
         <div
-          className={`border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 flex-1 backdrop-blur-sm ${
+          className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-300 min-h-[120px] backdrop-blur-sm ${
             dragActive 
               ? 'border-blue-500 bg-blue-600/10 scale-[1.02] shadow-lg shadow-blue-500/25' 
               : 'border-blue-800/40 hover:border-blue-700/60 bg-slate-800/25'
@@ -1149,8 +1449,8 @@ const EmpresasPage: React.FC = () => {
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
-          <Upload className="w-10 h-10 mx-auto mb-3 text-blue-400 transition-transform duration-300 hover:scale-110" />
-          <p className="text-sm mb-2 text-blue-100">Arraste arquivos aqui</p>
+          <Upload className="w-8 h-8 mx-auto mb-2 text-blue-400 transition-transform duration-300 hover:scale-110" />
+          <p className="text-sm mb-1 text-blue-100">Arraste arquivos aqui</p>
           <p className="text-xs text-blue-400 mb-3">ou</p>
           <input
             ref={fileInputRef}
@@ -1158,7 +1458,7 @@ const EmpresasPage: React.FC = () => {
             multiple
             onChange={handleFileSelect}
             className="hidden"
-            accept=".pdf,.xlsx,.xlsm,.csv,.docx"
+            accept=".pdf,.xlsx,.xlsm,.csv,.docx,.xml"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -1166,33 +1466,50 @@ const EmpresasPage: React.FC = () => {
           >
             Selecionar Arquivos
           </button>
-          <p className="text-xs text-blue-400 mt-3">PDF, XLSX, XLSM, CSV, DOCX</p>
+          <p className="text-[11px] text-blue-400 mt-2">PDF, XLSX, XLSM, CSV, DOCX</p>
         </div>
         </div>
 
-        {/* Lista de arquivos selecionados - fora da área de scroll */}
+        {/* Lista de arquivos selecionados - compacta e colapsável */}
         {selectedFiles.length > 0 && (
-          <div className="mt-4 space-y-2 animate-fade-in-down flex-shrink-0">
-            <h3 className="text-xs font-medium text-blue-300">
-              Arquivos ({selectedFiles.length})
-            </h3>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {selectedFiles.map((file, index) => (
-                <div key={index} className="flex items-center justify-between bg-slate-800/50 p-2 rounded text-xs transition-all duration-200 hover:bg-slate-800/70 backdrop-blur-sm border border-blue-800/20">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
-                    <span className="truncate text-blue-100">{file.name}</span>
-                  </div>
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="p-1 hover:bg-slate-600 rounded flex-shrink-0 transition-all duration-200 hover:scale-110"
-                  >
-                    <X className="w-3 h-3 text-red-400 hover:text-red-300 transition-colors duration-200" />
-                  </button>
-                </div>
-              ))}
+          <div className="mt-3 animate-fade-in-down flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-medium text-blue-300">Arquivos ({selectedFiles.length})</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-[11px] text-blue-400 hover:text-blue-300"
+                  onClick={() => setMostrarListaArquivos(v => !v)}
+                >
+                  {mostrarListaArquivos ? 'Ocultar detalhes' : 'Ver detalhes'}
+                </button>
+                <button
+                  className="text-[11px] text-red-400 hover:text-red-300 disabled:opacity-40"
+                  onClick={clearAllFiles}
+                  disabled={selectedFiles.length === 0}
+                  title="Remover todos os arquivos selecionados"
+                >
+                  Limpar tudo
+                </button>
+              </div>
             </div>
-            
+            {mostrarListaArquivos && (
+              <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between bg-slate-800/50 p-2 rounded text-xs transition-all duration-200 hover:bg-slate-800/70 backdrop-blur-sm border border-blue-800/20">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                      <span className="truncate text-blue-100">{file.name}</span>
+                    </div>
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="p-1 hover:bg-slate-600 rounded flex-shrink-0 transition-all duration-200 hover:scale-110"
+                    >
+                      <X className="w-3 h-3 text-red-400 hover:text-red-300 transition-colors duration-200" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Análise Automática */}
             {tipoArquivo === 'AUTO' && arquivosAnalisados.length > 0 && (
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/40 rounded animate-fade-in-down">
@@ -1428,6 +1745,16 @@ const EmpresasPage: React.FC = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              handleRenameEmpresa(empresa);
+                            }}
+                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
+                            title="Renomear empresa"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setEmpresaToCreateUnidade({ id: empresa.id, nome: empresa.nome });
                               setShowCreateUnidadeModal(true);
                             }}
@@ -1495,6 +1822,16 @@ const EmpresasPage: React.FC = () => {
                                         Selecionada
                                       </span>
                                     )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRenameUnidade(unidade.id, unidade.nome, empresa.id);
+                                      }}
+                                      className="p-1 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
+                                      title="Renomear unidade"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
                                     {unidade.id_unidade === "001" ? (
                                       <div className="p-1 text-gray-500 cursor-not-allowed" title="Matriz não pode ser excluída">
                                         <Trash2 className="w-3 h-3 opacity-30" />
@@ -1774,7 +2111,7 @@ const EmpresasPage: React.FC = () => {
                 <p className="text-blue-200"><strong>Arquivos:</strong> {uploadPreview.total_arquivos} total, {uploadPreview.validos} válidos</p>
               </div>
               
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-96 overflow-y-auto">
                 {uploadPreview.preview.map((item: any, index: number) => (
                   <div 
                     key={index} 
@@ -1796,6 +2133,9 @@ const EmpresasPage: React.FC = () => {
                             </p>
                             <p className="text-xs text-gray-400">
                               <span>Pasta:</span> {item.pasta_destino}
+                              {item.exists && (
+                                <span className="ml-2 text-amber-400">• já existe</span>
+                              )}
                             </p>
                           </>
                         ) : (
@@ -1804,11 +2144,11 @@ const EmpresasPage: React.FC = () => {
                           </p>
                         )}
                       </div>
-                      <div className={`w-4 h-4 rounded-full ${item.valido ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <div className={`w-4 h-4 rounded-full ${item.valido ? (item.exists ? 'bg-amber-500' : 'bg-green-500') : 'bg-red-500'}`} />
                     </div>
                   </div>
                 ))}
-              </div>
+            </div>
             </div>
             
             <div className="flex gap-3 mt-6">
@@ -1822,23 +2162,58 @@ const EmpresasPage: React.FC = () => {
                 Cancelar
               </button>
               
-              <button
-                onClick={executarUpload}
-                disabled={uploadPreview.validos === 0 || uploading}
-                className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                {uploading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
-                  </>
-                )}
-              </button>
+              {(() => {
+                const conflicts = (uploadPreview?.preview || []).filter((p: any) => p.valido && p.exists);
+                if (conflicts.length === 0) {
+                  return (
+                    <button
+                      onClick={() => executarUpload()}
+                      disabled={uploadPreview.validos === 0 || uploading}
+                      className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
+                    >
+                      {uploading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
+                        </>
+                      )}
+                    </button>
+                  );
+                }
+                return (
+                  <div className="flex-1 grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => executarUpload('overwrite')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                      title="Substitui os arquivos existentes"
+                    >
+                      Sobrescrever ({conflicts.length})
+                    </button>
+                    <button
+                      onClick={() => executarUpload('version')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                      title="Salva como nova versão (v2, v3, ...)"
+                    >
+                      Salvar como v2
+                    </button>
+                    <button
+                      onClick={() => executarUpload('skip')}
+                      disabled={uploading}
+                      className="px-3 py-2 rounded text-white bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
+                      title="Ignora apenas os arquivos em conflito"
+                    >
+                      Pular Conflitos
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

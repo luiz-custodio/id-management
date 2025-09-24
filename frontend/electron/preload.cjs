@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('auto-update', listener)
   },
   
+  // FS helpers (drag & drop de pastas no Electron)
+  expandDroppedPaths: (paths) => ipcRenderer.invoke('fs-expand-dropped', paths),
+  // Ler bytes de arquivos por caminho absoluto (usado no processamento em lote via upload)
+  readFiles: (paths) => ipcRenderer.invoke('fs-read-files', paths),
+  
   // Informações do sistema
   platform: process.platform,
   version: process.versions.electron,
