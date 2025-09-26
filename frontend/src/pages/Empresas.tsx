@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown, Edit2 } from 'lucide-react';
+import { useFileAnalysisWorker } from '../hooks/useFileAnalysisWorker';
+import type { FileAnalysisResult } from '../workers/types';
 import { api } from '../lib/api';
 import type { Empresa, Unidade } from '../lib/api';
 
@@ -96,13 +98,8 @@ const EmpresasPage: React.FC = () => {
   const [autoData, setAutoData] = useState<boolean>(false);
   const [autoDataMode, setAutoDataMode] = useState<'mod' | 'mod-1' | 'folder'>('mod');
   const [autoDeteccao, setAutoDeteccao] = useState<boolean>(false);
-  const [arquivosAnalisados, setArquivosAnalisados] = useState<Array<{
-    file: File;
-    tipoDetectado: string;
-    dataDetectada: string;
-    confianca: number;
-    motivo: string;
-  }>>([]);
+  const { analyzeFiles, analyzing: analyzerBusy } = useFileAnalysisWorker();
+  const [arquivosAnalisados, setArquivosAnalisados] = useState<FileAnalysisResult[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<number>>(new Set());
@@ -305,206 +302,65 @@ const EmpresasPage: React.FC = () => {
   // Função para lidar com mudança do checkbox de auto-detecção
   const handleAutoDeteccaoChange = (ativado: boolean) => {
     setAutoDeteccao(ativado);
-    
+
     if (ativado) {
-        // Se ativou auto-detecção, limpa tipo manual e analisa arquivos
-        setTipoArquivo('');
-        setCceeSubtipo('');
-        setMostrarDataOpcional(false);
-        setAutoData(false); // Data automática não se aplica no modo de detecção automática
-      
-      // Se há arquivos, analisa automaticamente
-      if (selectedFiles.length > 0) {
-        const analises = selectedFiles.map(analisarArquivoAutomaticamente);
-        setArquivosAnalisados(analises);
-      }
+      setTipoArquivo('');
+      setCceeSubtipo('');
+      setMostrarDataOpcional(false);
+      setAutoData(false);
+      setArquivosAnalisados([]);
     } else {
-      // Se desativou auto-detecção, limpa análises
       setArquivosAnalisados([]);
     }
   };
 
-  // Função para detectar tipo e data automaticamente
-  const analisarArquivoAutomaticamente = (file: File) => {
-    const nome = file.name.toLowerCase();
-    const nomeNorm = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const tokens = (nomeNorm.match(/[a-z0-9]+/g) || []);
-    const tset = new Set(tokens);
-    let tipoDetectado = '';
-    let dataDetectada = '';
-    let confianca = 0;
-    let motivo = '';
-
-    // REGRA 1: Faturas - apenas data no nome (ex: "2025-08.pdf")
-    const regexDataFatura = /^(\d{4})-(\d{2})\.(pdf|xlsm|xlsx?|docx?)$/i;
-    const matchFatura = nome.match(regexDataFatura);
-    if (matchFatura) {
-      tipoDetectado = 'FAT';
-      dataDetectada = `${matchFatura[1]}-${matchFatura[2]}`;
-      confianca = 95;
-      motivo = `Fatura detectada: nome contém apenas data (${dataDetectada})`;
-    }
-    
-    // REGRA 2: Notas de Energia - tokens (evita falsos positivos)
-    else if (tset.has('nota') || tset.has('cpc') || tset.has('lpc') || tset.has('cp') || tset.has('lp') || tset.has('venda') || tset.has('ve')) {
-      if (tset.has('cpc')) {
-        tipoDetectado = 'NE-CPC';
-        motivo = 'Nota de Energia CPC: token "cpc"';
-      } else if (tset.has('lpc')) {
-        tipoDetectado = 'NE-LPC';
-        motivo = 'Nota de Energia LPC: token "lpc"';
-      } else if (tset.has('cp')) {
-        tipoDetectado = 'NE-CP';
-        motivo = 'Nota de Energia CP: token "cp"';
-      } else if (tset.has('lp')) {
-        tipoDetectado = 'NE-LP';
-        motivo = 'Nota de Energia LP: token "lp"';
-      } else if (tset.has('venda') || tset.has('ve')) {
-        tipoDetectado = 'NE-VE';
-        motivo = 'Nota de Energia Venda: token "venda/ve"';
-      } else {
-        tipoDetectado = 'NE-CP'; // padrão se apenas "nota"
-        motivo = 'Nota de Energia: token "nota"';
-      }
-      
-      // Data = data de modificação menos 1 mês
-      const dataModificacao = new Date(file.lastModified);
-      dataModificacao.setMonth(dataModificacao.getMonth() - 1);
-      const ano = dataModificacao.getFullYear();
-      const mes = String(dataModificacao.getMonth() + 1).padStart(2, '0');
-      dataDetectada = `${ano}-${mes}`;
-      confianca = 85;
-      motivo += ` - Data: modificação menos 1 mês (${dataDetectada})`;
-    }
-    
-    // NOVA REGRA: ICMS (DEVEC/LDO/REC) – contém 'devec', 'ldo' ou 'rec' no nome → usar mês anterior à modificação
-    else if (nome.includes('devec') || nome.includes('ldo') || nome.includes('rec')) {
-      const dataMod = new Date(file.lastModified);
-      dataMod.setMonth(dataMod.getMonth() - 1);
-      const ano = dataMod.getFullYear();
-      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
-      dataDetectada = `${ano}-${mes}`;
-      confianca = 85;
-      if (nome.includes('devec')) {
-        tipoDetectado = 'ICMS-DEVEC';
-        motivo = 'ICMS-DEVEC detectado no nome - usando mês anterior';
-      } else {
-        if (nome.includes('ldo')) {
-          tipoDetectado = 'ICMS-LDO';
-          motivo = 'ICMS-LDO detectado no nome - usando mês anterior';
-        } else {
-          tipoDetectado = 'ICMS-REC';
-          motivo = 'ICMS-REC detectado no nome - usando mês anterior';
-        }
-      }
-    }
-    
-    // REGRA 3: Estudo - contém "estudo" no nome → usa data de modificação
-    else if (nome.includes('estudo')) {
-      tipoDetectado = 'EST';
-      const dataMod = new Date(file.lastModified);
-      const ano = dataMod.getFullYear();
-      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
-      dataDetectada = `${ano}-${mes}`;
-      confianca = 90;
-      motivo = 'Estudo detectado: nome contém "estudo" - usando data de modificação';
+  useEffect(() => {
+    if (!autoDeteccao) {
+      setArquivosAnalisados([]);
+      return;
     }
 
-    // REGRA 4: Documentos/Minutas (data = modificação): Carta Denúncia, Contrato, Procuração, Aditivo (+ cadastro/comunicado/licença)
-    else if (
-      (tset.has('carta') && (tset.has('denuncia')))
-      || tset.has('aditivo')
-      || tset.has('contrato')
-      || tset.has('procuracao') || nome.includes('procuração')
-      || tset.has('cadastro')
-      || tset.has('comunicado')
-      || tset.has('licenca') || nome.includes('licença')
-    ) {
-      const dataMod = new Date(file.lastModified);
-      const ano = dataMod.getFullYear();
-      const mes = String(dataMod.getMonth() + 1).padStart(2, '0');
-      // Para todos os DOC-* usamos apenas AAAA-MM
-      dataDetectada = `${ano}-${mes}`;
-      confianca = 90;
-
-      const isMinuta = tset.has('minuta') || tset.has('minutas') || tset.has('min');
-      const pref = isMinuta ? 'MIN' : 'DOC';
-
-      if (tset.has('carta') && tset.has('denuncia')) {
-        tipoDetectado = `${pref}-CAR`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Carta denúncia" - usando mês/ano da modificação`;
-      } else if (tset.has('aditivo')) {
-        tipoDetectado = `${pref}-ADT`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Aditivo" - usando mês/ano da modificação`;
-      } else if (tset.has('contrato')) {
-        tipoDetectado = `${pref}-CTR`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Contrato" - usando mês/ano da modificação`;
-      } else if (tset.has('procuracao') || nome.includes('procuração')) {
-        tipoDetectado = `${pref}-PRO`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Procuração" - usando mês/ano da modificação`;
-      } else if (tset.has('cadastro')) {
-        tipoDetectado = `${pref}-CAD`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Cadastro" - usando mês/ano da modificação`;
-        confianca = 70;
-      } else if (tset.has('comunicado')) {
-        tipoDetectado = `${pref}-COM`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Comunicado" - usando mês/ano da modificação`;
-        confianca = 70;
-      } else if (tset.has('licenca') || nome.includes('licença')) {
-        tipoDetectado = `${pref}-LIC`;
-        motivo = `${isMinuta ? 'Minuta' : 'Documento'}: "Licença" - usando mês/ano da modificação`;
-        confianca = 70;
-      }
+    if (selectedFiles.length === 0) {
+      setArquivosAnalisados([]);
+      return;
     }
 
-    // REGRA 5: Relatórios - contém "relatório" e data "JUL-25"
-    else if (nome.includes('relatorio') || nome.includes('relatório')) {
-      tipoDetectado = 'REL';
-      
-      // Buscar padrão de data no nome (ex: "JUL-25", "AGO-25")
-      const regexDataRelatorio = /(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)-(\d{2})/i;
-      const matchRelatorio = nome.match(regexDataRelatorio);
-      
-      if (matchRelatorio) {
-        const mesNome = matchRelatorio[1].toLowerCase();
-        const ano20 = matchRelatorio[2];
-        
-        // Converter mês para número
-        const meses: { [key: string]: string } = {
-          'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04',
-          'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08',
-          'set': '09', 'out': '10', 'nov': '11', 'dez': '12'
-        };
-        
-        const mesNum = meses[mesNome];
-        const anoCompleto = `20${ano20}`;
-        dataDetectada = `${anoCompleto}-${mesNum}`;
-        confianca = 90;
-        motivo = `Relatório detectado: nome contém "relatório" e data ${matchRelatorio[0].toUpperCase()}`;
-      } else {
-        // Se não encontrou data no nome, usar mês anterior
-        dataDetectada = getCurrentMonth();
-        confianca = 70;
-        motivo = 'Relatório detectado: nome contém "relatório" - usando mês anterior';
-      }
-    }
-    
-    // Se não detectou nada, deixar vazio para seleção manual
-    else {
-      tipoDetectado = ''; // Vazio - usuário deve escolher manualmente
-      dataDetectada = '';
-      confianca = 0;
-      motivo = 'Tipo não identificado - seleção manual necessária';
-    }
+    let cancelled = false;
 
-    return {
-      file,
-      tipoDetectado,
-      dataDetectada,
-      confianca,
-      motivo
+    const run = () => {
+      analyzeFiles({ files: selectedFiles, autoDataMode })
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+
+          setArquivosAnalisados(result.analyses);
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+
+          console.error('Erro na analise automatica', error);
+          setArquivosAnalisados([]);
+        });
     };
-  };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const idleId = (window as any).requestIdleCallback(run);
+      return () => {
+        cancelled = true;
+        (window as any).cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = setTimeout(run, 0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [autoDeteccao, selectedFiles, autoDataMode, analyzeFiles]);
 
   // Nova função: sincroniza PASTA → BANCO (importa empresas/unidades a partir do filesystem)
   const handleSync = async () => {
@@ -830,20 +686,14 @@ const EmpresasPage: React.FC = () => {
 
   // Função unificada para adicionar arquivos com análise automática
   const adicionarArquivos = (files: File[]) => {
+    if (files.length === 0) {
+      return;
+    }
+
     setSelectedFiles(prev => [...prev, ...files]);
-    
-    // Se auto-detecção estiver ativada, analisar arquivos
+
     if (autoDeteccao) {
-      const analises = files.map(analisarArquivoAutomaticamente);
-      setArquivosAnalisados(prev => [...prev, ...analises]);
-      
-      // Log das detecções para debug
-      analises.forEach(analise => {
-        console.log(`🤖 ${analise.file.name}:`);
-        console.log(`   Tipo: ${analise.tipoDetectado} (${analise.confianca}%)`);
-        console.log(`   Data: ${analise.dataDetectada}`);
-        console.log(`   Motivo: ${analise.motivo}`);
-      });
+      setArquivosAnalisados([]);
     }
   };
 
@@ -883,6 +733,11 @@ const EmpresasPage: React.FC = () => {
     // Verificar se CCEE precisa de subtipo
     if (!autoDeteccao && tipoArquivo === 'CCEE' && !cceeSubtipo) {
       setError('Selecione um subtipo CCEE');
+      return;
+    }
+
+    if (autoDeteccao && analyzerBusy) {
+      setError('Aguarde a análise automática finalizar');
       return;
     }
 
@@ -1499,7 +1354,16 @@ const EmpresasPage: React.FC = () => {
               </div>
             )}
             {/* Análise Automática */}
-            {tipoArquivo === 'AUTO' && arquivosAnalisados.length > 0 && (
+                        {autoDeteccao && analyzerBusy && arquivosAnalisados.length === 0 && (
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/40 rounded animate-fade-in-down">
+                <div className="flex items-center gap-2 text-xs text-slate-300">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Analisando arquivos...
+                </div>
+              </div>
+            )}
+
+{autoDeteccao && arquivosAnalisados.length > 0 && (
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800/40 rounded animate-fade-in-down">
                 <h4 className="text-xs font-medium text-blue-300 mb-2 flex items-center gap-1">
                   <span>🤖</span> Análise Automática
@@ -1540,7 +1404,7 @@ const EmpresasPage: React.FC = () => {
           <div className="flex-shrink-0 pt-4 border-t border-blue-800/30">
             <button
               onClick={handleUpload}
-              disabled={!selectedUnidade || (!autoDeteccao && !tipoArquivo) || selectedFiles.length === 0 || uploading}
+              disabled={!selectedUnidade || (!autoDeteccao && !tipoArquivo) || selectedFiles.length === 0 || uploading || (autoDeteccao && analyzerBusy)}
               className="w-full bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-2 rounded text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-700/30 border border-blue-600/30"
             >
               {uploading ? 'Processando...' : `Visualizar Upload (${selectedFiles.length} arquivo${selectedFiles.length !== 1 ? 's' : ''})`}
@@ -2277,9 +2141,3 @@ const EmpresasPage: React.FC = () => {
 };
 
 export default EmpresasPage;
-
-
-
-
-
-
