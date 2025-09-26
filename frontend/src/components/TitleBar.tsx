@@ -69,7 +69,7 @@ const TitleBar: React.FC = () => {
       </div>
 
       {/* Controles da janela */}
-      <div className="flex items-center gap-1 electron-no-drag" style={{ WebkitAppRegion: "no-drag" }}>
+      <div className="flex items-center gap-1 electron-no-drag">
         {/* Verificar atualizações */}
         <button
           onClick={handleCheckUpdates}
