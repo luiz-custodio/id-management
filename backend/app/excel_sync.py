@@ -292,22 +292,20 @@ def rename_filial(
             raise ExcelSyncError(f"Planilha '{path}' nao possui aba '{sheet_fil}'")
         filiais_ws = workbook[sheet_fil]
         found = False
-        for row in filiais_ws.iter_rows(min_row=2):
-            if len(row) < 4:
+        for row_idx, row_values in enumerate(filiais_ws.iter_rows(min_row=2, values_only=True), start=2):
+            emp_id = _normalize_id(row_values[1] if len(row_values) > 1 else None, width=4)
+            unit_id = _normalize_id(row_values[2] if len(row_values) > 2 else None, width=3)
+            if emp_id != normalized_emp or unit_id != normalized_unit:
                 continue
-            emp_id = _normalize_id(row[1].value if len(row) > 1 else None, width=4)
-            unit_id = _normalize_id(row[2].value if len(row) > 2 else None, width=3)
-            if emp_id == normalized_emp and unit_id == normalized_unit:
-                if len(row) > 4:
-                    row[4].value = novo_nome_unidade
-                if nome_empresa and len(row) > 3:
-                    row[3].value = nome_empresa
-                empresa_nome = nome_empresa or (row[3].value if len(row) > 3 else "") or nome_empresa or ""
-                path_value = _path_str(base_dir, empresa_nome, normalized_emp, novo_nome_unidade, normalized_unit)
-                if len(row) > 5:
-                    row[5].value = path_value
-                found = True
-                break
+            filiais_ws.cell(row=row_idx, column=5, value=novo_nome_unidade)
+            if nome_empresa:
+                filiais_ws.cell(row=row_idx, column=4, value=nome_empresa)
+                empresa_nome = nome_empresa
+            else:
+                empresa_nome = row_values[3] if len(row_values) > 3 and row_values[3] else ""
+            path_value = _path_str(base_dir, empresa_nome, normalized_emp, novo_nome_unidade, normalized_unit)
+            filiais_ws.cell(row=row_idx, column=6, value=path_value)
+            found = True
         return found
 
 

@@ -64,6 +64,26 @@ const EmpresasPage: React.FC = () => {
   const [empresaToCreateUnidade, setEmpresaToCreateUnidade] = useState<{id: number, nome: string} | null>(null);
   const [newUnidadeNome, setNewUnidadeNome] = useState('');
   const [creatingUnidade, setCreatingUnidade] = useState(false);
+
+  // Estados para renomear empresas
+  const [showRenameEmpresaModal, setShowRenameEmpresaModal] = useState(false);
+  const [empresaToRename, setEmpresaToRename] = useState<Empresa | null>(null);
+  const [renameEmpresaNome, setRenameEmpresaNome] = useState('');
+  const [renamingEmpresa, setRenamingEmpresa] = useState(false);
+  const [renameEmpresaError, setRenameEmpresaError] = useState<string | null>(null);
+
+  // Estados para renomear unidades
+  const [showRenameUnidadeModal, setShowRenameUnidadeModal] = useState(false);
+  const [unidadeToRename, setUnidadeToRename] = useState<{
+    id: number;
+    nome: string;
+    empresaId: number;
+    empresaNome: string;
+    idUnidade: string;
+  } | null>(null);
+  const [renameUnidadeNome, setRenameUnidadeNome] = useState('');
+  const [renamingUnidade, setRenamingUnidade] = useState(false);
+  const [renameUnidadeError, setRenameUnidadeError] = useState<string | null>(null);
   
   // Estados para upload
   const [selectedEmpresa, setSelectedEmpresa] = useState<string>('');
@@ -464,40 +484,97 @@ const EmpresasPage: React.FC = () => {
   };
 
   // Renomear empresa
-  const handleRenameEmpresa = async (empresa: Empresa) => {
-    const atual = empresa.nome;
-    const novo = window.prompt('Novo nome da empresa:', atual)?.trim();
-    if (!novo || novo === atual) return;
-    try {
-      await api.renomearEmpresa(empresa.id, novo);
-      await fetchEmpresas();
-      if (expandedEmpresas.has(empresa.id)) {
-        await loadUnidadesEmpresa(empresa.id);
-      }
-      // Se a empresa renomeada está selecionada, atualiza o nome exibido na sidebar
-      if (selectedEmpresa === String(empresa.id)) {
-        setSelectedEmpresaNome(novo);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao renomear empresa';
-      alert(msg);
-    }
+  const handleRenameEmpresa = (empresa: Empresa) => {
+    setEmpresaToRename(empresa);
+    setRenameEmpresaNome(empresa.nome);
+    setRenameEmpresaError(null);
+    setShowRenameEmpresaModal(true);
   };
 
   // Renomear unidade
-  const handleRenameUnidade = async (unidadeId: number, nomeAtual: string, empresaId: number) => {
-    const novo = window.prompt('Novo nome da unidade:', nomeAtual)?.trim();
-    if (!novo || novo === nomeAtual) return;
+  const handleRenameUnidade = (unidade: Unidade, empresa: Empresa) => {
+    setUnidadeToRename({
+      id: unidade.id,
+      nome: unidade.nome,
+      empresaId: empresa.id,
+      empresaNome: empresa.nome,
+      idUnidade: unidade.id_unidade,
+    });
+    setRenameUnidadeNome(unidade.nome);
+    setRenameUnidadeError(null);
+    setShowRenameUnidadeModal(true);
+  };
+
+  const closeRenameEmpresaModal = () => {
+    setShowRenameEmpresaModal(false);
+    setEmpresaToRename(null);
+    setRenameEmpresaNome('');
+    setRenameEmpresaError(null);
+  };
+
+  const confirmRenameEmpresa = async () => {
+    if (!empresaToRename) return;
+    const trimmed = renameEmpresaNome.trim();
+    if (!trimmed) {
+      setRenameEmpresaError('Informe um nome valido.');
+      return;
+    }
+    if (trimmed === empresaToRename.nome) {
+      setRenameEmpresaError('O novo nome deve ser diferente do atual.');
+      return;
+    }
     try {
-      await api.renomearUnidade(unidadeId, novo);
-      await loadUnidadesEmpresa(empresaId);
-      // Se a unidade renomeada está selecionada, atualiza o nome exibido na sidebar
-      if (selectedEmpresa === String(empresaId) && selectedUnidade === String(unidadeId)) {
-        setSelectedUnidadeNome(novo);
+      setRenamingEmpresa(true);
+      setRenameEmpresaError(null);
+      await api.renomearEmpresa(empresaToRename.id, trimmed);
+      await fetchEmpresas();
+      if (expandedEmpresas.has(empresaToRename.id)) {
+        await loadUnidadesEmpresa(empresaToRename.id);
       }
+      if (selectedEmpresa === String(empresaToRename.id)) {
+        setSelectedEmpresaNome(trimmed);
+      }
+      closeRenameEmpresaModal();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao renomear empresa';
+      setRenameEmpresaError(msg);
+    } finally {
+      setRenamingEmpresa(false);
+    }
+  };
+
+  const closeRenameUnidadeModal = () => {
+    setShowRenameUnidadeModal(false);
+    setUnidadeToRename(null);
+    setRenameUnidadeNome('');
+    setRenameUnidadeError(null);
+  };
+
+  const confirmRenameUnidade = async () => {
+    if (!unidadeToRename) return;
+    const trimmed = renameUnidadeNome.trim();
+    if (!trimmed) {
+      setRenameUnidadeError('Informe um nome valido.');
+      return;
+    }
+    if (trimmed === unidadeToRename.nome) {
+      setRenameUnidadeError('O novo nome deve ser diferente do atual.');
+      return;
+    }
+    try {
+      setRenamingUnidade(true);
+      setRenameUnidadeError(null);
+      await api.renomearUnidade(unidadeToRename.id, trimmed);
+      await loadUnidadesEmpresa(unidadeToRename.empresaId);
+      if (selectedEmpresa === String(unidadeToRename.empresaId) && selectedUnidade === String(unidadeToRename.id)) {
+        setSelectedUnidadeNome(trimmed);
+      }
+      closeRenameUnidadeModal();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao renomear unidade';
-      alert(msg);
+      setRenameUnidadeError(msg);
+    } finally {
+      setRenamingUnidade(false);
     }
   };
 
@@ -1772,7 +1849,7 @@ const EmpresasPage: React.FC = () => {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleRenameUnidade(unidade.id, unidade.nome, empresa.id);
+                                        handleRenameUnidade(unidade, empresa);
                                       }}
                                       className="p-1 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-all duration-200 hover:scale-110"
                                       title="Renomear unidade"
@@ -1846,6 +1923,175 @@ const EmpresasPage: React.FC = () => {
           </div>
       </main>
     </div>
+
+    {/* Modal Renomear Empresa */}
+    {showRenameEmpresaModal && empresaToRename && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+        <div className="bg-slate-900/95 border border-blue-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-blue-200 flex items-center gap-2">
+              <Edit2 className="w-5 h-5 text-yellow-400" />
+              Renomear Empresa
+            </h2>
+            <button
+              type="button"
+              onClick={() => { if (!renamingEmpresa) closeRenameEmpresaModal(); }}
+              disabled={renamingEmpresa}
+              className="text-blue-300 hover:text-white transition-colors disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-blue-200 text-sm mt-3">
+            Atualiza o nome da empresa <strong className="text-white">{empresaToRename.nome}</strong>
+            {empresaToRename.id_empresa ? ` (ID ${empresaToRename.id_empresa})` : ''}, sincronizando a Planilha Mestre e renomeando a pasta correspondente.
+          </p>
+          {basePath && (
+            <p className="text-xs text-blue-300/80 mt-1">
+              Pasta base: {basePath}
+            </p>
+          )}
+          <div className="mt-4 space-y-2">
+            <label className="block text-sm text-blue-200" htmlFor="rename-empresa-input">Novo nome</label>
+            <input
+              id="rename-empresa-input"
+              type="text"
+              autoFocus
+              value={renameEmpresaNome}
+              onChange={(e) => {
+                setRenameEmpresaNome(e.target.value);
+                if (renameEmpresaError) setRenameEmpresaError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !renamingEmpresa) {
+                  const trimmed = renameEmpresaNome.trim();
+                  if (trimmed && trimmed !== empresaToRename.nome) {
+                    e.preventDefault();
+                    confirmRenameEmpresa();
+                  }
+                }
+              }}
+              className="w-full rounded-md bg-slate-950/80 border border-blue-700/50 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              disabled={renamingEmpresa}
+            />
+          </div>
+          {renameEmpresaError && (
+            <p className="text-red-400 text-sm mt-3">{renameEmpresaError}</p>
+          )}
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeRenameEmpresaModal}
+              disabled={renamingEmpresa}
+              className="px-4 py-2 rounded-md border border-blue-700/40 text-blue-200 hover:text-white hover:border-blue-500/60 transition disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmRenameEmpresa}
+              disabled={renamingEmpresa || !renameEmpresaNome.trim() || renameEmpresaNome.trim() === empresaToRename.nome}
+              className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {renamingEmpresa ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Modal Renomear Unidade */}
+    {showRenameUnidadeModal && unidadeToRename && (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
+        <div className="bg-slate-900/95 border border-blue-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-blue-200 flex items-center gap-2">
+              <Edit2 className="w-5 h-5 text-yellow-400" />
+              Renomear Unidade
+            </h2>
+            <button
+              type="button"
+              onClick={() => { if (!renamingUnidade) closeRenameUnidadeModal(); }}
+              disabled={renamingUnidade}
+              className="text-blue-300 hover:text-white transition-colors disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-blue-200 text-sm mt-3">
+            Empresa <strong className="text-white">{unidadeToRename.empresaNome}</strong>, unidade
+            <strong className="text-white"> {unidadeToRename.nome}</strong> (código {unidadeToRename.idUnidade}).
+          </p>
+          <p className="text-xs text-blue-300/80 mt-1">
+            A alteração renomeia a subpasta correspondente no diretório base e sincroniza a Planilha Mestre.
+          </p>
+          {basePath && (
+            <p className="text-xs text-blue-300/80 mt-1">
+              Pasta base: {basePath}
+            </p>
+          )}
+          <div className="mt-4 space-y-2">
+            <label className="block text-sm text-blue-200" htmlFor="rename-unidade-input">Novo nome</label>
+            <input
+              id="rename-unidade-input"
+              type="text"
+              autoFocus
+              value={renameUnidadeNome}
+              onChange={(e) => {
+                setRenameUnidadeNome(e.target.value);
+                if (renameUnidadeError) setRenameUnidadeError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !renamingUnidade) {
+                  const trimmed = renameUnidadeNome.trim();
+                  if (trimmed && unidadeToRename && trimmed !== unidadeToRename.nome) {
+                    e.preventDefault();
+                    confirmRenameUnidade();
+                  }
+                }
+              }}
+              className="w-full rounded-md bg-slate-950/80 border border-blue-700/50 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              disabled={renamingUnidade}
+            />
+          </div>
+          {renameUnidadeError && (
+            <p className="text-red-400 text-sm mt-3">{renameUnidadeError}</p>
+          )}
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeRenameUnidadeModal}
+              disabled={renamingUnidade}
+              className="px-4 py-2 rounded-md border border-blue-700/40 text-blue-200 hover:text-white hover:border-blue-500/60 transition disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmRenameUnidade}
+              disabled={renamingUnidade || !renameUnidadeNome.trim() || (unidadeToRename && renameUnidadeNome.trim() === unidadeToRename.nome)}
+              className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {renamingUnidade ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Modal de Exclusão */}
       {showDeleteModal && empresaToDelete && (
@@ -2141,3 +2387,4 @@ const EmpresasPage: React.FC = () => {
 };
 
 export default EmpresasPage;
+
