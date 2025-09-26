@@ -10,7 +10,7 @@ RE_REL = re.compile(r"^REL-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECAS
 RE_EST = re.compile(r"^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$", re.IGNORECASE)
 RE_DOC = re.compile(r"^DOC-[A-Z]{3}-.+\.(pdf|docx|xlsx)$", re.IGNORECASE)
 RE_CCEE = re.compile(
-    r"^CCEE-(?:CFZ|GFN|LFN|LFRCA|LFRES|PEN|SUM|DCT)\d{3}-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$",
+    r"^CCEE-(?:CFZ|GFN|LFN|LFRCAP?|LFRES|PEN|SUM|DCT)\d{3}-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$",
     re.IGNORECASE
 )
 # ICMS (novo padrão)

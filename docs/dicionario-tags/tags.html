@@ -99,7 +99,7 @@
   <div class="note">Regras rápidas (DOC/MIN): jurídico → prefira data completa; vários no mês → -001, -002; revisões → -V1, -V2.</div>
 
   <h2>5) CCEE com subcódigo (cada tipo em uma pasta)</h2>
-  <p><strong>TAG do tipo:</strong> <code>CCEE-&lt;COD&gt;</code>, onde &lt;COD&gt; ∈ {CFZ, GFN, LFN, LFRCA, LFRES, PEN, SUM, BOLETOCA, ND}. Alguns possuem sufixo numérico (003, 004, 001 etc.), mas <strong>BOLETOCA</strong> e <strong>ND</strong> não utilizam sufixo.</p>
+  <p><strong>TAG do tipo:</strong> <code>CCEE-&lt;COD&gt;</code>, onde &lt;COD&gt; ∈ {CFZ, GFN, LFN, LFRCAP, LFRES, PEN, SUM, BOLETOCA, ND}. Alguns possuem sufixo numérico (003, 004, 001 etc.), mas <strong>BOLETOCA</strong> e <strong>ND</strong> não utilizam sufixo.</p>
   <p><span class="chip">Novos códigos incluídos: BOLETOCA, ND</span></p>
   <p><strong>Nome do arquivo:</strong> <code>CCEE-&lt;COD&gt;-AAAA-MM[-Vn][-X][ - Descritivo].pdf</code></p>
   <p><strong>Exemplos e pastas:</strong></p>
@@ -125,7 +125,7 @@ RES  : ^RES-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 EST  : ^EST-\d{4}-(0[1-9]|1[0-2])\.(pdf|xlsx|csv)$
 DOC  : ^DOC-[A-Z]{3}-.*\.(pdf|docx|xlsx)$
 MIN  : ^MIN-[A-Z]{3}-.*\.(pdf|docx|xlsx)$
-CCEE : ^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$</code></pre>
+CCEE : ^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCAP\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])(-V\d+)?(-[A-Z])?( - .+)?\.(pdf|xlsx|csv)$</code></pre>
 
   <h2>7) Dicionário de siglas CCEE (&lt;COD&gt;)</h2>
   <table>
@@ -134,7 +134,7 @@ CCEE : ^CCEE-(?:CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{
       <tr><td><strong>CFZ</strong></td><td>Conta de Energia – Faixa Z (ex.: CFZ003)</td><td>Subcódigo numérico de 3 dígitos por cliente/objeto.</td></tr>
       <tr><td><strong>GFN</strong></td><td>Garantia Física – Energia Nova</td><td>Relatórios de lastro/garantia no ACL.</td></tr>
       <tr><td><strong>LFN</strong></td><td>Lastro – Energia Nova</td><td>Documentos de lastro.</td></tr>
-      <tr><td><strong>LFRCA</strong></td><td>Lastro – Reserva (CA)</td><td>Categoria específica de reserva (CA).</td></tr>
+      <tr><td><strong>LFRCAP</strong></td><td>Lastro – Reserva (CA)</td><td>Categoria específica de reserva (CA).</td></tr>
       <tr><td><strong>LFRES</strong></td><td>Lastro – Reserva (ES)</td><td>Categoria específica de reserva (ES).</td></tr>
       <tr><td><strong>PEN</strong></td><td>Penalidades</td><td>Autos, notificações e afins.</td></tr>
       <tr><td><strong>SUM</strong></td><td>Sumários/Resumo</td><td>Consolidações mensais.</td></tr>

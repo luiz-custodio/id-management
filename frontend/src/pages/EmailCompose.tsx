@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Editor } from '@tinymce/tinymce-react'
 import type { Editor as TinyMCEEditor } from 'tinymce'
 import { toast } from 'sonner'
-import { Loader2, Mail, RefreshCw, Search, Users } from 'lucide-react'
+import { Loader2, Mail, RefreshCw, Search, Users, Plus, X } from 'lucide-react'
 
 import { api, type EmailConfig, type EmailSendRequest, type EmpresaEmail } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -68,6 +68,12 @@ const EmailCompose: React.FC = () => {
   const [bodyHtml, setBodyHtml] = useState('')
   const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null)
   const [senderEmail, setSenderEmail] = useState('')
+  const [manualRecipients, setManualRecipients] = useState<string[]>([])
+  const [removedRecipients, setRemovedRecipients] = useState<string[]>([])
+  const [manualEmailInput, setManualEmailInput] = useState('')
+
+  const normalizeEmail = (value: string) => value.trim().toLowerCase()
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   const editorInit = useMemo(() => {
     const toolbarRows = [
       'undo redo | fontfamily fontsize | formatselect styleselect | forecolor backcolor removeformat',
@@ -460,7 +466,7 @@ const EmailCompose: React.FC = () => {
     [empresas, selectedIds],
   )
 
-  const { recipients, missing } = useMemo(() => {
+  const { autoRecipients, missing } = useMemo(() => {
     const emails: string[] = []
     const missingCompanies: EmpresaEmail[] = []
     const seen = new Set<string>()
@@ -471,15 +477,58 @@ const EmailCompose: React.FC = () => {
         continue
       }
       for (const email of empresa.emails) {
-        const key = email.toLowerCase()
+        const key = normalizeEmail(email)
         if (seen.has(key)) continue
         seen.add(key)
         emails.push(email)
       }
     }
 
-    return { recipients: emails, missing: missingCompanies }
+    return { autoRecipients: emails, missing: missingCompanies }
   }, [selectedEmpresas])
+
+  const manualLookup = useMemo(() => {
+    return new Set(manualRecipients.map((email) => normalizeEmail(email)))
+  }, [manualRecipients])
+
+  const finalRecipients = useMemo(() => {
+    const result: string[] = []
+    const blocked = new Set(removedRecipients)
+    const seen = new Set<string>()
+
+    for (const email of autoRecipients) {
+      const key = normalizeEmail(email)
+      if (blocked.has(key) || seen.has(key)) continue
+      seen.add(key)
+      result.push(email)
+    }
+
+    for (const email of manualRecipients) {
+      const trimmed = email.trim()
+      if (!trimmed) continue
+      const key = normalizeEmail(trimmed)
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(trimmed)
+    }
+
+    return result
+  }, [autoRecipients, manualRecipients, removedRecipients])
+
+  const autoLookup = useMemo(() => {
+    return new Set(autoRecipients.map((email) => normalizeEmail(email)))
+  }, [autoRecipients])
+
+  const hasOverrides = manualRecipients.length > 0 || removedRecipients.length > 0
+
+  useEffect(() => {
+    if (!removedRecipients.length) return
+    const available = new Set(autoRecipients.map((email) => normalizeEmail(email)))
+    setRemovedRecipients((prev) => {
+      const filtered = prev.filter((email) => available.has(email))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [autoRecipients])
 
   const hasBody = useMemo(() => {
     const textContent = bodyHtml
@@ -490,7 +539,7 @@ const EmailCompose: React.FC = () => {
     return textContent.length > 0
   }, [bodyHtml])
 
-  const canSend = recipients.length > 0 && subject.trim().length > 0 && hasBody && Boolean(senderEmail || emailConfig?.defaultSender)
+  const canSend = finalRecipients.length > 0 && subject.trim().length > 0 && hasBody && Boolean(senderEmail || emailConfig?.defaultSender)
 
   const toolbarButtonLabel = loading ? 'Atualizando...' : 'Recarregar'
 
@@ -520,6 +569,46 @@ const EmailCompose: React.FC = () => {
     })
   }
 
+  const handleRemoveRecipient = (email: string) => {
+    const key = normalizeEmail(email)
+    if (manualLookup.has(key)) {
+      setManualRecipients((prev) => prev.filter((item) => normalizeEmail(item) !== key))
+      return
+    }
+    if (autoLookup.has(key)) {
+      setRemovedRecipients((prev) => (prev.includes(key) ? prev : [...prev, key]))
+    }
+  }
+
+  const handleAddManualRecipient = () => {
+    const email = manualEmailInput.trim()
+    if (!email) {
+      toast.error('Informe um e-mail para adicionar')
+      return
+    }
+    if (!emailPattern.test(email)) {
+      toast.error('E-mail invalido')
+      return
+    }
+    const key = normalizeEmail(email)
+    const alreadyIncluded = finalRecipients.some((item) => normalizeEmail(item) === key)
+    if (alreadyIncluded) {
+      toast.warning('E-mail ja incluso na lista')
+      setManualEmailInput('')
+      return
+    }
+    setManualRecipients((prev) => [...prev, email])
+    setRemovedRecipients((prev) => prev.filter((item) => item !== key))
+    setManualEmailInput('')
+  }
+
+  const handleManualInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      handleAddManualRecipient()
+    }
+  }
+
   const handleSend = async () => {
     if (!canSend) {
       toast.error('Preencha assunto, corpo e escolha ao menos um destinatario')
@@ -538,6 +627,10 @@ const EmailCompose: React.FC = () => {
       bodyHtml,
       saveToSentItems: true,
       senderEmail: chosenSender,
+    }
+
+    if (hasOverrides) {
+      payload.overrideRecipients = finalRecipients
     }
 
     try {
@@ -731,7 +824,7 @@ const EmailCompose: React.FC = () => {
               <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-100">
                 <AlertTitle className="text-amber-100">Destinatarios</AlertTitle>
                 <AlertDescription className="text-amber-50">
-                  {recipients.length} destinatario(s) unicos serao incluidos. Empresas sem e-mail continuam listadas para ajuste na Planilha Mestre.
+                  {finalRecipients.length} destinatario(s) unicos serao incluidos. Empresas sem e-mail continuam listadas para ajuste na Planilha Mestre.
                 </AlertDescription>
               </Alert>
             </div>
@@ -740,7 +833,7 @@ const EmailCompose: React.FC = () => {
         <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-xs text-blue-300">
             <Badge variant="outline" className="border-blue-600/50 bg-blue-800/25 text-blue-200">
-              {recipients.length} destinatarios
+              {finalRecipients.length} destinatarios
             </Badge>
             {missing.length > 0 && (
               <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-100">
@@ -764,15 +857,56 @@ const EmailCompose: React.FC = () => {
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-sm font-semibold text-blue-200">E-mails ({recipients.length})</h4>
+                    <h4 className="text-sm font-semibold text-blue-200">E-mails ({finalRecipients.length})</h4>
                     <ScrollArea className="mt-2 h-40 rounded border border-blue-800/40 bg-slate-900/60">
-                      <ul className="space-y-1 p-3 text-sm text-blue-100">
-                        {recipients.length === 0 && <li>Nenhum destinatario disponivel.</li>}
-                        {recipients.map((email) => (
-                          <li key={email} className="font-mono text-xs">{email}</li>
-                        ))}
+                      <ul className="space-y-2 p-3 text-sm text-blue-100">
+                        {finalRecipients.length === 0 && (
+                          <li className="text-xs text-blue-300">Nenhum destinatario disponivel.</li>
+                        )}
+                        {finalRecipients.map((email) => {
+                          const normalized = normalizeEmail(email)
+                          const isManual = manualLookup.has(normalized)
+                          return (
+                            <li
+                              key={email}
+                              className="flex items-center justify-between gap-3 rounded border border-blue-800/40 bg-slate-900/70 px-3 py-2"
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-mono text-xs">{email}</span>
+                                {isManual && (
+                                  <span className="text-[10px] uppercase tracking-wide text-blue-400">Manual</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRecipient(email)}
+                                className="inline-flex h-6 w-6 items-center justify-center rounded border border-blue-800/40 text-blue-300 hover:bg-blue-800/30 hover:text-white"
+                                title="Remover destinatario"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </li>
+                          )
+                        })}
                       </ul>
                     </ScrollArea>
+                    <div className="mt-3 flex gap-2">
+                      <Input
+                        value={manualEmailInput}
+                        onChange={(event) => setManualEmailInput(event.target.value)}
+                        onKeyDown={handleManualInputKeyDown}
+                        placeholder="Adicionar e-mail manual"
+                        className="flex-1 bg-white/10 border-blue-500/30 text-white placeholder:text-blue-300"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleAddManualRecipient}
+                        className="gap-2 bg-blue-600/90 hover:bg-blue-500"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Adicionar
+                      </Button>
+                    </div>
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-blue-200">Empresas selecionadas</h4>
@@ -823,6 +957,7 @@ const EmailCompose: React.FC = () => {
 }
 
 export default EmailCompose
+
 
 
 

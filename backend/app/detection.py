@@ -62,7 +62,7 @@ def detect_type_and_date(
             return pref, re.search(r"(\d{4}-(0[1-9]|1[0-2]))", nome_raw).group(1), 95, f"Padrão exato {pref} detectado"
 
     # 2) Padrões CCEE com código: CCEE-<COD>-YYYY-MM
-    if re.match(r"^CCEE-(CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCA\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])",
+    if re.match(r"^CCEE-(CFZ\d{3}|GFN\d{3}|LFN\d{3}|LFRCAP?\d{3}|LFRES\d{3}|PEN\d{3}|SUM\d{3}|BOLETOCA|ND)-\d{4}-(0[1-9]|1[0-2])",
                 nome_raw, re.IGNORECASE):
         return "CCEE", re.search(r"(\d{4}-(0[1-9]|1[0-2]))", nome_raw).group(1), 95, "Padrão exato CCEE detectado"
 

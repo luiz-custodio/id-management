@@ -58,10 +58,10 @@ const TitleBar: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-8 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-4 z-50 electron-drag">
+    <div className="fixed top-0 left-0 right-0 h-8 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-4 z-50">
       
       {/* Título */}
-      <div className="flex items-center gap-2 text-white text-sm font-medium">
+      <div className="flex-1 flex items-center gap-2 text-white text-sm font-medium electron-drag select-none h-full">
         <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center text-xs font-bold">
           BM
         </div>
@@ -69,11 +69,11 @@ const TitleBar: React.FC = () => {
       </div>
 
       {/* Controles da janela */}
-      <div className="flex items-center gap-1 electron-no-drag">
+      <div className="flex items-center gap-1 electron-no-drag" style={{ WebkitAppRegion: "no-drag" }}>
         {/* Verificar atualizações */}
         <button
           onClick={handleCheckUpdates}
-          className="w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+          className="electron-no-drag w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
           title="Verificar atualizações"
         >
           <RefreshCw size={12} />
@@ -82,7 +82,7 @@ const TitleBar: React.FC = () => {
         <div className="relative">
           <button
             onClick={() => setShowSizeMenu(!showSizeMenu)}
-            className="w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+            className="electron-no-drag w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
             title={`Tamanho: ${sizes[currentSize]?.name || 'Médio'}`}
           >
             <Monitor size={12} />
@@ -94,7 +94,7 @@ const TitleBar: React.FC = () => {
                 <button
                   key={key}
                   onClick={() => handleSizeChange(key)}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-700 transition-colors ${
+                  className={`electron-no-drag w-full px-3 py-2 text-left text-sm hover:bg-slate-700 transition-colors ${
                     currentSize === key ? 'bg-blue-600 text-white' : 'text-slate-300'
                   }`}
                 >
@@ -110,7 +110,7 @@ const TitleBar: React.FC = () => {
         {/* Botão Pin */}
         <button
           onClick={handleTogglePin}
-          className={`w-8 h-6 flex items-center justify-center rounded transition-colors ${
+          className={`electron-no-drag w-8 h-6 flex items-center justify-center rounded transition-colors ${
             isPinned 
               ? 'bg-blue-600 hover:bg-blue-700 text-white' 
               : 'hover:bg-slate-700 text-slate-300 hover:text-white'
@@ -123,7 +123,7 @@ const TitleBar: React.FC = () => {
         {/* Botão Minimizar */}
         <button
           onClick={handleMinimize}
-          className="w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+          className="electron-no-drag w-8 h-6 flex items-center justify-center hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
           title="Minimizar"
         >
           <Minus size={14} />
@@ -132,7 +132,7 @@ const TitleBar: React.FC = () => {
         {/* Botão Fechar */}
         <button
           onClick={handleClose}
-          className="w-8 h-6 flex items-center justify-center hover:bg-red-600 text-slate-300 hover:text-white rounded transition-colors"
+          className="electron-no-drag w-8 h-6 flex items-center justify-center hover:bg-red-600 text-slate-300 hover:text-white rounded transition-colors"
           title="Fechar"
         >
           <X size={14} />

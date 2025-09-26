@@ -35,17 +35,6 @@ const EmpresasPage: React.FC = () => {
   // Configuração do sistema
   const { basePath } = useSystemConfig();
   
-  // Estado para detectar tamanho da janela
-  const [windowSize, setWindowSize] = useState('medium');
-  
-  useEffect(() => {
-    if (window.electronAPI) {
-      window.electronAPI.windowGetSizes().then(({ current }) => {
-        setWindowSize(current);
-      });
-    }
-  }, []);
-  
   const [searchTerm, setSearchTerm] = useState('');
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [unidadesPorEmpresa, setUnidadesPorEmpresa] = useState<Record<number, Unidade[]>>({});
@@ -1164,12 +1153,13 @@ const EmpresasPage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 text-white flex overflow-hidden">
-      {/* Sidebar com upload */}
-      <div className={`${windowSize === 'small' ? 'w-64' : windowSize === 'medium' ? 'w-72' : 'w-80'} bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm ${windowSize === 'small' ? 'p-4' : 'p-6'} flex flex-col h-full border-r border-blue-800/30`}>
-        {/* Logo - Fixo no topo */}
-        <div className={`${windowSize === 'small' ? 'mb-3' : 'mb-6'} flex-shrink-0`}>
-          {/* Logo BM Energia oficial */}
+    <>
+      <div className="h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-blue-900 text-white overflow-hidden flex flex-row layout-side-by-side">
+        {/* Sidebar com upload - Sempre visível lado a lado */}
+        <aside className="bg-gradient-to-b from-slate-900/95 to-blue-950/95 backdrop-blur-sm p-4 flex flex-col h-full border-r border-blue-800/30 sidebar-fixed">
+        {/* Logo - Fixo no topo - Compacto */}
+        <div className="flex-shrink-0 mb-3">
+          {/* Logo BM Energia oficial - reduzido */}
           <div className="flex items-center justify-center">
             <img 
               src="/logo-bm-energia.png" 
@@ -1196,18 +1186,17 @@ const EmpresasPage: React.FC = () => {
           </div>
         </div>
         
-        {/* Área de conteúdo principal com scroll */}
-        <div className="flex-1 overflow-y-auto space-y-3">
-          {/* Título e Unidade selecionada */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-medium text-blue-100">Upload de Arquivos</h2>
+        {/* Main scrollable content (compact) */}
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {/* Título compacto */}
+          <h2 className="text-base font-medium text-blue-100 mb-2">Upload de Arquivos</h2>
             
-            {/* Mostra a unidade selecionada se houver com animação */}
-            {selectedUnidade && (
-              <div className="animate-fade-in-down bg-blue-800/10 border border-blue-700/30 rounded-md px-3 py-2 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <MapPin className="w-3 h-3 text-blue-400 flex-shrink-0" />
+          {/* Mostra a unidade selecionada se houver com animação - Compacta */}
+          {selectedUnidade && (
+            <div className="animate-fade-in-down bg-blue-800/10 border border-blue-700/30 rounded-md px-2 py-1.5 transition-all duration-300 hover:border-blue-600/50 backdrop-blur-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin className="w-3 h-3 text-blue-400 flex-shrink-0" />
                     <span className="text-xs font-medium text-blue-100 truncate">
                       {selectedEmpresaNome} • {selectedUnidadeNome}
                     </span>
@@ -1437,7 +1426,7 @@ const EmpresasPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Área de Drag and Drop */}
+        {/* Drag and drop area */}
         <div
           className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-300 min-h-[120px] backdrop-blur-sm ${
             dragActive 
@@ -1467,7 +1456,6 @@ const EmpresasPage: React.FC = () => {
             Selecionar Arquivos
           </button>
           <p className="text-[11px] text-blue-400 mt-2">PDF, XLSX, XLSM, CSV, DOCX</p>
-        </div>
         </div>
 
         {/* Lista de arquivos selecionados - compacta e colapsável */}
@@ -1547,7 +1535,7 @@ const EmpresasPage: React.FC = () => {
           </div>
         )}
         
-        {/* Área de ação fixa - fora da área de scroll */}
+        {/* Fixed action area */}
         {selectedFiles.length > 0 && (
           <div className="flex-shrink-0 pt-4 border-t border-blue-800/30">
             <button
@@ -1559,31 +1547,33 @@ const EmpresasPage: React.FC = () => {
             </button>
           </div>
         )}
-      </div>
+      </aside>
 
-      {/* Main Content */}
-      <div className={`flex-1 ${windowSize === 'small' ? 'p-2' : 'p-4'} h-full overflow-y-auto`}>
+      <main className="p-4 h-full flex flex-col overflow-hidden flex-1 main-content-flex">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-blue-300 to-blue-200 bg-clip-text text-transparent">
               Empresas
             </h1>
+          </div>
+          <div className="flex items-center gap-2">
             <button
               onClick={handleSync}
               disabled={loading}
-              className="bg-slate-800/70 hover:bg-slate-800/90 disabled:opacity-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-800/40 hover:border-blue-700/60 backdrop-blur-sm"
+              className="bg-slate-800/70 hover:bg-slate-800/90 disabled:opacity-50 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 text-sm transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-800/40 hover:border-blue-700/60 backdrop-blur-sm"
               title="Sincroniza banco com pastas locais - cria pastas faltantes"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> : <RefreshCw className="w-4 h-4 transition-transform duration-300 hover:rotate-180 text-blue-400" />}
-              Sincronizar
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" /> : <RefreshCw className="w-3.5 h-3.5 transition-transform duration-300 hover:rotate-180 text-blue-400" />}
+              <span className="hidden sm:inline">Sincronizar</span>
             </button>
             <button
               onClick={() => setShowForm(s => !s)}
-              className="bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 px-4 py-2 rounded-lg flex items-center space-x-2 transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg shadow-blue-700/30 border border-blue-600/30"
+              className="bg-gradient-to-r from-blue-700 to-blue-800 hover:from-blue-800 hover:to-blue-900 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg shadow-blue-700/30 border border-blue-600/30 text-sm"
             >
-              <Plus className={`w-5 h-5 transition-transform duration-300 ${showForm ? 'rotate-45' : ''}`} />
-              <span>{showForm ? 'Cancelar' : 'Nova Empresa'}</span>
+              <Plus className={`w-4 h-4 transition-transform duration-300 ${showForm ? 'rotate-45' : ''}`} />
+              <span className="hidden sm:inline">{showForm ? 'Cancelar' : 'Nova Empresa'}</span>
+              <span className="sm:hidden">{showForm ? '✕' : '+'}</span>
             </button>
           </div>
         </div>
@@ -1695,27 +1685,32 @@ const EmpresasPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Table - Design Ultra Moderno */}
-        <div className="bg-slate-900/80 rounded-2xl overflow-hidden border border-blue-400/20 backdrop-blur-xl shadow-2xl shadow-blue-900/20 hover:shadow-blue-900/30 transition-all duration-300 relative">
-          {/* Linha de destaque superior animada */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent animate-pulse"></div>
-          
-          <table className="w-full relative">
-            <thead>
-              <tr className="border-b border-blue-400/30 text-sm bg-slate-900/80 backdrop-blur-sm relative">
-                {/* Fundo com padrão sutil */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.03),transparent_50%)]"></div>
-                
-                <th className="text-left px-6 py-5 font-semibold text-blue-300 w-20 relative">
-                  <button onClick={() => toggleSort('id')} className="inline-flex items-center gap-1.5 hover:text-blue-200 transition-all duration-300 hover:scale-105 group">
-                    <span className="relative">
-                      ID
-                      <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
-                    </span>
-                    {sortBy !== 'id' ? (
-                      <ArrowUpDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-                    ) : sortDir === 'asc' ? (
-                      <ChevronUp className="w-3.5 h-3.5 text-blue-400" />
+        {/* Container da tabela com scroll próprio - Responsivo */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {/* Table - Design Ultra Moderno com scroll limitado */}
+          <div className="bg-slate-900/80 rounded-2xl overflow-hidden border border-blue-400/20 backdrop-blur-xl shadow-2xl shadow-blue-900/20 hover:shadow-blue-900/30 transition-all duration-300 relative flex-1 flex flex-col">
+            {/* Linha de destaque superior animada */}
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent animate-pulse"></div>
+            
+            <div className="flex flex-col h-full">
+              {/* Header fixo */}
+              <div className="flex-shrink-0">
+                <table className="w-full relative">
+                  <thead>
+                    <tr className="border-b border-blue-400/30 text-sm bg-slate-900/80 backdrop-blur-sm relative">
+                      {/* Fundo com padrão sutil */}
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.03),transparent_50%)]"></div>
+                      
+                      <th className="text-left px-6 py-4 font-semibold text-blue-300 w-20 relative">
+                        <button onClick={() => toggleSort('id')} className="inline-flex items-center gap-1.5 hover:text-blue-200 transition-all duration-300 hover:scale-105 group">
+                          <span className="relative">
+                            ID
+                            <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
+                          </span>
+                          {sortBy !== 'id' ? (
+                            <ArrowUpDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                          ) : sortDir === 'asc' ? (
+                            <ChevronUp className="w-3.5 h-3.5 text-blue-400" />
                     ) : (
                       <ChevronDown className="w-3.5 h-3.5 text-blue-400" />
                     )}
@@ -1741,10 +1736,16 @@ const EmpresasPage: React.FC = () => {
                     Ações
                     <div className="absolute -bottom-1 right-0 w-8 h-0.5 bg-gradient-to-l from-blue-400 to-transparent opacity-30"></div>
                   </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
+                      </th>
+                    </tr>
+                  </thead>
+                </table>
+              </div>
+              
+              {/* Body com scroll */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <table className="w-full">
+                  <tbody className="text-sm">
               {sortedEmpresas.map((empresa) => {
                 const isExpanded = expandedEmpresas.has(empresa.id);
                 return (
@@ -1764,8 +1765,8 @@ const EmpresasPage: React.FC = () => {
                       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-blue-500/[0.02] via-transparent to-purple-500/[0.02]"></div>
                       
                       <td 
-                        className={`${windowSize === 'small' ? 'px-3 py-3' : 'px-6 py-5'} text-blue-300 font-mono tracking-wider font-semibold group-hover:text-blue-200 transition-all duration-300 text-center w-20 relative`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
+                        className="px-6 py-5 text-blue-300 font-mono tracking-wider font-semibold group-hover:text-blue-200 transition-all duration-300 text-center w-20 relative cursor-pointer"
                       >
                         <div className="relative inline-flex items-center justify-center">
                           <div className="absolute inset-0 rounded-lg bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-all duration-300 scale-75 group-hover:scale-100"></div>
@@ -1775,8 +1776,8 @@ const EmpresasPage: React.FC = () => {
                         </div>
                       </td>
                       <td 
-                        className={`${windowSize === 'small' ? 'px-3 py-3' : 'px-6 py-5'} text-white font-medium group-hover:text-blue-100 transition-all duration-300 max-w-0 w-full relative`}
                         onClick={() => toggleEmpresaExpansion(empresa.id)}
+                        className="px-6 py-5 text-white font-medium group-hover:text-blue-100 transition-all duration-300 max-w-0 w-full relative cursor-pointer"
                       >
                         <div className="flex items-center justify-between min-w-0">
                           <div className="relative flex-1 min-w-0">
@@ -1961,22 +1962,28 @@ const EmpresasPage: React.FC = () => {
                   </React.Fragment>
                 );
               })}
-            </tbody>
-          </table>
-          {loading && (
-            <div className="flex items-center gap-2 px-6 py-4 text-blue-300 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+                  </tbody>
+                </table>
+              </div>
             </div>
-          )}
-          {!loading && filteredEmpresas.length === 0 && (
-            <div className="text-center py-8 text-blue-300 text-sm">
+            
+            {/* Loading e estados vazios fora da área de scroll */}
+            {loading && (
+              <div className="flex items-center gap-2 px-6 py-4 text-blue-300 text-sm border-t border-blue-400/20">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+              </div>
+            )}
+            {!loading && filteredEmpresas.length === 0 && (
+              <div className="text-center py-8 text-blue-300 text-sm border-t border-blue-400/20">
               Nenhuma empresa encontrada
             </div>
           )}
-        </div>
-      </div>
+            </div>
+          </div>
+      </main>
+    </div>
 
-      {/* Modal de Exclusão */}
+    {/* Modal de Exclusão */}
       {showDeleteModal && empresaToDelete && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
           <div className="bg-slate-900/95 border border-red-800/40 rounded-lg p-6 max-w-md w-full mx-4 animate-slide-up shadow-2xl">
@@ -2244,63 +2251,35 @@ const EmpresasPage: React.FC = () => {
                 Cancelar
               </button>
               
-              {(() => {
-                const conflicts = (uploadPreview?.preview || []).filter((p: any) => p.valido && p.exists);
-                if (conflicts.length === 0) {
-                  return (
-                    <button
-                      onClick={() => executarUpload()}
-                      disabled={uploadPreview.validos === 0 || uploading}
-                      className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      {uploading ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Enviando...
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="w-4 h-4" />
-                          Confirmar Upload ({uploadPreview.validos} arquivo{uploadPreview.validos !== 1 ? 's' : ''})
-                        </>
-                      )}
-                    </button>
-                  );
-                }
-                return (
-                  <div className="flex-1 grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => executarUpload('overwrite')}
-                      disabled={uploading}
-                      className="px-3 py-2 rounded text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                      title="Substitui os arquivos existentes"
-                    >
-                      Sobrescrever ({conflicts.length})
-                    </button>
-                    <button
-                      onClick={() => executarUpload('version')}
-                      disabled={uploading}
-                      className="px-3 py-2 rounded text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                      title="Salva como nova versão (v2, v3, ...)"
-                    >
-                      Salvar como v2
-                    </button>
-                    <button
-                      onClick={() => executarUpload('skip')}
-                      disabled={uploading}
-                      className="px-3 py-2 rounded text-white bg-gray-600 hover:bg-gray-700 disabled:opacity-50"
-                      title="Ignora apenas os arquivos em conflito"
-                    >
-                      Pular Conflitos
-                    </button>
-                  </div>
-                );
-              })()}
+              <button
+                onClick={() => executarUpload()}
+                disabled={uploadPreview?.validos === 0 || uploading}
+                className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Confirmar Upload ({uploadPreview?.validos || 0} arquivo{(uploadPreview?.validos || 0) !== 1 ? 's' : ''})
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  );
+    </>
+  ); 
 };
+
 export default EmpresasPage;
+
+
+
+
+
+

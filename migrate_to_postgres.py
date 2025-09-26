@@ -99,17 +99,29 @@ async def migrate_sqlite_to_postgres():
         
         itens_migrated = 0
         for item in itens:
-            await postgres_conn.execute(
-                """INSERT INTO itens 
-                   (id, id_item, tipo, ano_mes, titulo_visivel, caminho_arquivo, 
-                    descricao, data_criacao, data_modificacao, unidade_id) 
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
-                item["id"], item["id_item"], item["tipo"], item["ano_mes"],
-                item["titulo_visivel"], item["caminho_arquivo"], item["descricao"],
-                item["data_criacao"], item["data_modificacao"], item["unidade_id"]
-            )
+            columns = set(item.keys())
+            if {"descricao", "data_criacao", "data_modificacao"} & columns:
+                descricao = item["descricao"] if "descricao" in columns else None
+                data_criacao = item["data_criacao"] if "data_criacao" in columns else None
+                data_modificacao = item["data_modificacao"] if "data_modificacao" in columns else None
+                await postgres_conn.execute(
+                    """INSERT INTO itens 
+                       (id, id_item, tipo, ano_mes, titulo_visivel, caminho_arquivo, 
+                        descricao, data_criacao, data_modificacao, unidade_id) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    item["id"], item["id_item"], item["tipo"], item["ano_mes"],
+                    item["titulo_visivel"], item["caminho_arquivo"], descricao,
+                    data_criacao, data_modificacao, item["unidade_id"]
+                )
+            else:
+                await postgres_conn.execute(
+                    """INSERT INTO itens 
+                       (id, id_item, tipo, ano_mes, titulo_visivel, caminho_arquivo, unidade_id) 
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    item["id"], item["id_item"], item["tipo"], item["ano_mes"],
+                    item["titulo_visivel"], item["caminho_arquivo"], item["unidade_id"]
+                )
             itens_migrated += 1
-        
         # Ajusta sequence
         if itens:
             max_id = max(i["id"] for i in itens)

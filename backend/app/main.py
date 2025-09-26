@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
-from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo
+from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo, SUBPASTAS_NUMERADAS, CCEE_SUBCODIGOS
 from .detection import detect_type_and_date
 from .organizer import preview_moves, apply_moves
 from .routers import batch_organize
@@ -101,21 +101,7 @@ _DEFAULT_BASE = Path(__file__).resolve().parents[2] / "cliente"
 BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", str(_DEFAULT_BASE)))
 
 # Estrutura padrão de subpastas para cada unidade (com numeração para ordenação)
-SUBPASTAS_PADRAO = [
-    "01 Relatórios e Resultados",
-    "02 Faturas", 
-    "03 Notas de Energia",
-    "04 CCEE - DRI",
-    "05 BM Energia",
-    "06 Documentos do Cliente",
-    "07 Projetos",
-    "08 Comercializadoras",
-    "09 CCEE - Modelagem",
-    "10 Distribuidora",
-    "11 ICMS",
-    "12 Estudos e Análises",
-    "13 Miscelânea",
-]
+SUBPASTAS_PADRAO = list(SUBPASTAS_NUMERADAS)
 
 # Mapeamento de tipos de arquivo para pastas baseado no dicionário de TAGs
 TIPO_PARA_PASTA = {
@@ -147,10 +133,7 @@ TIPO_PARA_PASTA = {
 }
 
 # Subpastas específicas para CCEE (cada tipo tem sua pasta)
-CCEE_SUBPASTAS = [
-    "CFZ003", "CFZ004", "GFN001", "LFN001", "LFRCAP001", 
-    "LFRES001", "PEN001", "SUM001", "BOLETOCA", "ND"
-]
+CCEE_SUBPASTAS = list(CCEE_SUBCODIGOS)
 
 # CORS liberado para desenvolvimento
 app.add_middleware(
