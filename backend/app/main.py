@@ -100,6 +100,21 @@ app = FastAPI(
 _DEFAULT_BASE = Path(__file__).resolve().parents[2] / "cliente"
 BASE_CLIENTES_PATH = Path(os.getenv("BASE_DIR", str(_DEFAULT_BASE)))
 
+
+def _is_sharing_violation(exc: OSError) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    win_err = getattr(exc, "winerror", None)
+    if win_err in {32, 33}:
+        return True
+    errno = getattr(exc, "errno", None)
+    if errno in {13}:
+        return True
+    message = str(exc).lower()
+    return ("being used by another process" in message
+            or "sharing violation" in message
+            or "access is denied" in message)
+
 # Estrutura padrão de subpastas para cada unidade (com numeração para ordenação)
 SUBPASTAS_PADRAO = list(SUBPASTAS_NUMERADAS)
 
@@ -436,8 +451,16 @@ def renomear_empresa(empresa_pk: int, payload: schemas.EmpresaUpdate, db: Sessio
             if old_path.exists() and old_path != new_path and not new_path.exists():
                 old_path.rename(new_path)
                 folder_renamed = True
+        except OSError as e:
+            if _is_sharing_violation(e):
+                detail = ("Nao foi possivel renomear a pasta da empresa porque existem arquivos ou subpastas abertos. "
+                          "Feche tudo relacionado a essa empresa e tente novamente.")
+                raise HTTPException(status_code=423, detail=detail) from e
+            logger.warning("Falha ao renomear pasta da empresa: %s", e)
+            raise HTTPException(status_code=500, detail="Falha ao renomear pasta da empresa no disco.") from e
         except Exception as e:
             logger.warning("Falha ao renomear pasta da empresa: %s", e)
+            raise HTTPException(status_code=500, detail="Falha ao renomear pasta da empresa no disco.") from e
 
         try:
             updated = rename_empresa(emp.id_empresa, novo_nome, base_dir=BASE_CLIENTES_PATH)
@@ -636,8 +659,16 @@ def renomear_unidade(unidade_pk: int, payload: schemas.UnidadeUpdate, db: Sessio
                     if subpasta.startswith("04 CCEE - DRI"):
                         for tipo in CCEE_SUBPASTAS:
                             (sp / tipo).mkdir(exist_ok=True)
+        except OSError as e:
+            if _is_sharing_violation(e):
+                detail = ("Nao foi possivel renomear a pasta da unidade porque existem arquivos abertos. "
+                          "Feche qualquer arquivo dessa unidade antes de tentar novamente.")
+                raise HTTPException(status_code=423, detail=detail) from e
+            logger.warning("Erro ao ajustar pastas da unidade: %s", e)
+            raise HTTPException(status_code=500, detail="Falha ao renomear pasta da unidade no disco.") from e
         except Exception as e:
             logger.warning("Erro ao ajustar pastas da unidade: %s", e)
+            raise HTTPException(status_code=500, detail="Falha ao renomear pasta da unidade no disco.") from e
 
         try:
             updated = rename_filial(
