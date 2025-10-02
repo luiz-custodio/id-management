@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown, Edit2 } from 'lucide-react';
+import { Search, MapPin, Plus, RefreshCw, Loader2, AlertCircle, X, Upload, FileText, Trash2, ArrowUpDown, ChevronUp, ChevronDown, Edit2, AlarmClock } from 'lucide-react';
 import { useFileAnalysisWorker } from '../hooks/useFileAnalysisWorker';
 import type { FileAnalysisResult } from '../workers/types';
 import { api } from '../lib/api';
@@ -125,6 +125,9 @@ const EmpresasPage: React.FC = () => {
   const [expandedEmpresas, setExpandedEmpresas] = useState<Set<number>>(new Set());
   const [uploadPreview, setUploadPreview] = useState<any>(null);
   const [showUploadPreview, setShowUploadPreview] = useState(false);
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+  const [overwriteCount, setOverwriteCount] = useState(0);
+  const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
   const [uploading, setUploading] = useState(false);
   // UI compacto: controlar exibição da lista detalhada de arquivos
   const [mostrarListaArquivos, setMostrarListaArquivos] = useState(false);
@@ -888,6 +891,9 @@ const EmpresasPage: React.FC = () => {
       }
       
       setUploadPreview(preview);
+      setOverwriteConfirmed(false);
+      setShowOverwriteConfirm(false);
+      setOverwriteCount(0);
       setShowUploadPreview(true);
       
     } catch (err) {
@@ -1002,6 +1008,9 @@ const EmpresasPage: React.FC = () => {
       setMostrarDataOpcional(false);
       setShowUploadPreview(false);
       setUploadPreview(null);
+      setOverwriteConfirmed(false);
+      setShowOverwriteConfirm(false);
+      setOverwriteCount(0);
       
       // Mostra resultado
       setError(`✅ ${result.message}`);
@@ -1012,10 +1021,37 @@ const EmpresasPage: React.FC = () => {
       setError(msg);
     } finally {
       setUploading(false);
+      setOverwriteConfirmed(false);
+      setShowOverwriteConfirm(false);
+      setOverwriteCount(0);
     }
   };
 
   // Toggle expansão de empresa - permite apenas uma por vez
+
+
+  const handleUploadConfirmation = () => {
+    if (!uploadPreview) {
+      executarUpload();
+      return;
+    }
+    const duplicates = Array.isArray(uploadPreview.preview)
+      ? uploadPreview.preview.filter((item: any) => item && item.exists)
+      : [];
+    if (duplicates.length > 0 && !overwriteConfirmed) {
+      setOverwriteCount(duplicates.length);
+      setShowOverwriteConfirm(true);
+      return;
+    }
+    executarUpload();
+  };
+
+  const confirmOverwriteAndUpload = () => {
+    setOverwriteConfirmed(true);
+    setShowOverwriteConfirm(false);
+    executarUpload();
+  };
+
   const toggleEmpresaExpansion = async (empresaId: number) => {
     setExpandedEmpresas(prev => {
       const newSet = new Set<number>();
@@ -2295,6 +2331,47 @@ const EmpresasPage: React.FC = () => {
         </div>
       )}
 
+      {/* Confirmação de sobrescrita */}
+      {showOverwriteConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] animate-fade-in">
+          <div className="bg-slate-950/95 border border-amber-500/60 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-slide-up">
+            <div className="flex items-center gap-3 text-amber-200">
+              <div className="p-2 bg-amber-500/20 rounded-full border border-amber-400/60 animate-pulse">
+                <AlarmClock className="w-7 h-7 text-amber-300" />
+              </div>
+              <h2 className="text-xl font-bold tracking-wide">Alerta de Arquivo Existente</h2>
+            </div>
+            <p className="mt-4 text-sm text-blue-100 leading-relaxed">
+              Você tem total certeza que quer salvar um arquivo que já existe?
+              {overwriteCount > 0 && (
+                <span className="block mt-2 text-amber-200">{overwriteCount} arquivo{overwriteCount !== 1 ? 's' : ''} será(ão) sobrescrito(s).</span>
+              )}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOverwriteConfirm(false);
+                  setOverwriteCount(0);
+                  setOverwriteConfirmed(false);
+                }}
+                className="px-4 py-2 rounded-md border border-slate-700 text-slate-200 hover:border-slate-500 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmOverwriteAndUpload}
+                className="px-4 py-2 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold transition flex items-center gap-2"
+              >
+                <AlarmClock className="w-5 h-5" />
+                Sim, tenho certeza
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Preview do Upload */}
       {showUploadPreview && uploadPreview && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
@@ -2355,6 +2432,9 @@ const EmpresasPage: React.FC = () => {
                 onClick={() => {
                   setShowUploadPreview(false);
                   setUploadPreview(null);
+                  setOverwriteConfirmed(false);
+                  setShowOverwriteConfirm(false);
+                  setOverwriteCount(0);
                 }}
                 className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-white transition-all duration-200"
               >
@@ -2362,7 +2442,7 @@ const EmpresasPage: React.FC = () => {
               </button>
               
               <button
-                onClick={() => executarUpload()}
+                onClick={handleUploadConfirmation}
                 disabled={uploadPreview?.validos === 0 || uploading}
                 className="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-white transition-all duration-200 flex items-center justify-center gap-2"
               >
@@ -2387,4 +2467,3 @@ const EmpresasPage: React.FC = () => {
 };
 
 export default EmpresasPage;
-
