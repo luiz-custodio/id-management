@@ -58,6 +58,35 @@ import 'tinymce/skins/ui/oxide/content.min.css'
 import 'tinymce/skins/content/default/content.min.css'
 import '../styles/tinymce-dark.css'
 
+const SIGNATURE_MARKER = 'class="assinatura"'
+
+const SIGNATURE_HTML = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:16px;">
+  <tbody>
+    <tr>
+      <td class="assinatura">
+        <img src="https://bmenergia.com.br/wp-content/uploads/2018/04/logo-principal-w636-h114.png" alt="Logo BM Energia" width="300" height="auto"><br>
+        <strong>BM Energia</strong><br>
+        Consultoria e Gestão em Energia<br>
+        Caxias do Sul | São Paulo | Goiânia | Curitiba<br>
+        Tel: (54) 3536-6165&nbsp;| Cel: (54) 9 9999-3373<br>
+        <a href="https://www.bmenergia.com.br">www.bmenergia.com.br</a>
+      </td>
+    </tr>
+  </tbody>
+</table>`
+
+const appendSignature = (html: string): string => {
+  if (html.includes(SIGNATURE_MARKER)) {
+    return html
+  }
+
+  if (!html.trim()) {
+    return SIGNATURE_HTML
+  }
+
+  return `${html}${SIGNATURE_HTML}`
+}
+
 const EmailCompose: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
@@ -71,6 +100,7 @@ const EmailCompose: React.FC = () => {
   const [manualRecipients, setManualRecipients] = useState<string[]>([])
   const [removedRecipients, setRemovedRecipients] = useState<string[]>([])
   const [manualEmailInput, setManualEmailInput] = useState('')
+  const [includeSignature, setIncludeSignature] = useState(true)
 
   const normalizeEmail = (value: string) => value.trim().toLowerCase()
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -621,10 +651,12 @@ const EmailCompose: React.FC = () => {
       return
     }
 
+    const finalBodyHtml = includeSignature ? appendSignature(bodyHtml) : bodyHtml
+
     const payload: EmailSendRequest = {
       empresaIds: Array.from(selectedIds),
       subject: subject.trim(),
-      bodyHtml,
+      bodyHtml: finalBodyHtml,
       saveToSentItems: true,
       senderEmail: chosenSender,
     }
@@ -841,7 +873,16 @@ const EmailCompose: React.FC = () => {
               </Badge>
             )}
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <label className="flex items-center gap-2 text-xs text-blue-200">
+              <input
+                type="checkbox"
+                checked={includeSignature}
+                onChange={(event) => setIncludeSignature(event.target.checked)}
+                className="h-4 w-4 accent-blue-500"
+              />
+              <span>Incluir assinatura BM Energia</span>
+            </label>
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" className="border-blue-600/50 bg-blue-800/25 text-blue-100 hover:bg-blue-700/30 hover:text-white">

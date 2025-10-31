@@ -5,12 +5,16 @@ from sqlalchemy import select, func
 from .database import Base, engine, SessionLocal, get_database_info
 from . import models, schemas
 from .id_utils import next_id_empresa, next_id_unidade, build_item_id, validar_nome_arquivo
-from .fs_utils import montar_estrutura_unidade, subpasta_por_tipo, SUBPASTAS_NUMERADAS, CCEE_SUBCODIGOS
+from .fs_utils import (
+    montar_estrutura_unidade,
+    subpasta_por_tipo,
+    SUBPASTAS_NUMERADAS,
+    CCEE_SUBCODIGOS,
+    extract_year_month_from_path,
+    is_valid_year_month,
+)
 from .detection import detect_type_and_date
 from .organizer import preview_moves, apply_moves
-from .routers import batch_organize
-from .routers import batch_debug
-from .routers import batch_simple
 from .routers import emails
 from .excel_sync import (
     ExcelSyncError,
@@ -161,10 +165,7 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 
 # Incluir routers
-app.include_router(batch_organize.router)  # Router original funcionando
 app.include_router(emails.router)
-# app.include_router(batch_simple.router)  # Router simples funcionando
-# app.include_router(batch_debug.router)  # Router de debug
 
 # ==========================================
 # ENDPOINTS DE GERENCIAMENTO DOCKER/POSTGRES
@@ -786,6 +787,14 @@ async def preview_upload_auto(
             # Pega tipo e data específicos para este arquivo
             tipo_arquivo = (form_data.get(f'tipo_{i}') or '').strip()
             mes_ano = (form_data.get(f'data_{i}') or '').strip()
+            if not is_valid_year_month(mes_ano):
+                mes_ano = ''
+
+            source_path = (form_data.get(f'source_{i}') or '').strip()
+            if not mes_ano and source_path:
+                detected_mes_ano = extract_year_month_from_path(source_path)
+                if detected_mes_ano:
+                    mes_ano = detected_mes_ano
 
             if not tipo_arquivo:
                 tipo_arquivo, mes_ano_detect, _mot = detectar_tipo_data_backend(file.filename)
@@ -962,6 +971,14 @@ async def executar_upload_auto(
             # Pega tipo e data específicos para este arquivo
             tipo_arquivo = (form_data.get(f'tipo_{i}') or '').strip()
             mes_ano = (form_data.get(f'data_{i}') or '').strip()
+            if not is_valid_year_month(mes_ano):
+                mes_ano = ''
+
+            source_path = (form_data.get(f'source_{i}') or '').strip()
+            if not mes_ano and source_path:
+                detected_mes_ano = extract_year_month_from_path(source_path)
+                if detected_mes_ano:
+                    mes_ano = detected_mes_ano
 
             if not tipo_arquivo:
                 tipo_arquivo, mes_ano_detect, _mot = detectar_tipo_data_backend(file.filename)

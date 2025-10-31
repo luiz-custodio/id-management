@@ -195,8 +195,7 @@ def suggest_new_name(detected_type: str, filename: str, last_modified: Optional[
 
 def top_level_folder(file_type: str) -> str:
     """
-    Mapeia tipo → pasta de alto nível (contadores/visão batch).
-    Segue a FOLDER_STRUCTURE do frontend (BatchOrganize):
+    Mapeia tipo → pasta de alto nível usada na organização das unidades.
       - FAT → 02 Faturas
       - NE-* → 03 Notas de Energia
       - CCEE/CCEE-BOLETOCA → 04 CCEE - DRI

@@ -1,27 +1,15 @@
 /// <reference lib="webworker" />
 
 import type { AnalyzeMessage, AnalyzeResponse, SerializableWorkerFile, WorkerAnalysis } from './types';
+import { extractYearMonthFromPath } from '../utils/extractYearMonthFromPath';
 
 const ctx: DedicatedWorkerGlobalScope = self as unknown as DedicatedWorkerGlobalScope;
-
-const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
 
 function computeMesAnoFromFile(file: SerializableWorkerFile, mode: 'mod' | 'mod-1' | 'folder'): string {
   try {
     if (mode === 'folder') {
       const rawPath = (file.webkitRelativePath || file.path || '').toString();
-      if (rawPath) {
-        const normalized = rawPath.replace(/\\\\/g, '/');
-        const segments = normalized.split('/').filter(Boolean);
-        for (let i = segments.length - 2; i >= 0; i -= 1) {
-          const segment = segments[i];
-          const match = segment.match(folderPattern);
-          if (match) {
-            return `${match[1]}-${match[2]}`;
-          }
-        }
-      }
-      return '';
+      return extractYearMonthFromPath(rawPath);
     }
 
     const date = new Date(file.lastModified || Date.now());

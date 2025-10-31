@@ -70,69 +70,6 @@ class OrganizadorPreviewOut(BaseModel):
 class OrganizadorAplicarIn(BaseModel):
     plano: List[OrganizadorPreviewOut]
 
-# SCHEMAS PARA ORGANIZAÇÃO EM LOTE
-class BatchFileRequest(BaseModel):
-    name: str
-    path: str
-    size: int
-    last_modified: Optional[float] = None  # Timestamp da data de modificação
-
-class BatchAnalysisRequest(BaseModel):
-    empresa_id: int
-    unidade_id: int
-    files: List[BatchFileRequest]
-
-class BatchFileItem(BaseModel):
-    name: str
-    path: str
-    size: int
-    is_detected: bool
-    detected_type: Optional[str] = None
-    target_folder: Optional[str] = None
-    new_name: Optional[str] = None
-    # Pasta de origem (primeiro segmento do caminho relativo enviado)
-    source_folder: Optional[str] = None
-
-class BatchAnalysisResponse(BaseModel):
-    detected_files: List[BatchFileItem]
-    undetected_files: List[BatchFileItem]
-    empresa_info: str
-    unidade_info: str
-    base_path: str
-
-class BatchProcessingOperation(BaseModel):
-    original_name: str
-    new_name: str
-    source_path: str
-    target_path: str
-
-class BatchProcessRequest(BaseModel):
-    empresa_id: int
-    unidade_id: int
-    operations: List[BatchProcessingOperation]
-
-class BatchProcessResult(BaseModel):
-    original_name: str
-    new_name: str
-    target_path: str
-    success: bool
-    error: Optional[str] = None
-
-class BatchProcessResponse(BaseModel):
-    results: List[BatchProcessResult]
-    total_files: int
-    successful_files: int
-    empresa_info: str
-    unidade_info: str
-
-class FolderStructure(BaseModel):
-    id: str
-    name: str
-    path: str
-    description: str
-    types: List[str]
-    count: int
-
 
 # EMAIL SENDER
 class EmpresaEmailOut(BaseModel):

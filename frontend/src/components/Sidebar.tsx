@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Package, ClipboardCopy, Menu, X, Mail } from 'lucide-react';
+import { Building2, ClipboardCopy, Menu, X, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { api, type Empresa, type Unidade } from '@/lib/api';
@@ -40,12 +40,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
       href: '/emails',
       icon: Mail,
       description: 'Compor e enviar mensagens'
-    },
-    {
-      name: 'Organização em Lote',
-      href: '/batch-organize',
-      icon: Package,
-      description: 'Organizar múltiplos arquivos'
     }
   ];
 

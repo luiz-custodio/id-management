@@ -458,3 +458,59 @@ ipcMain.handle('fs-read-files', async (_evt, paths) => {
     return [];
   }
 });
+
+ipcMain.handle('dialog-open-files', async (_evt, options = {}) => {
+  try {
+    const defaultFilters = [
+      { name: 'Documentos', extensions: ['pdf', 'xlsx', 'xlsm', 'csv', 'docx', 'xml'] },
+    ];
+    const properties = ['openFile', 'multiSelections', 'dontAddToRecent'];
+    if (options?.allowDirectories) {
+      properties.push('openDirectory');
+    }
+
+    const dialogOptions = {
+      title: options?.title || 'Selecionar arquivos',
+      filters: Array.isArray(options?.filters) && options.filters.length ? options.filters : defaultFilters,
+      properties,
+    };
+
+    const result = await dialog.showOpenDialog(mainWindow, dialogOptions);
+    if (result.canceled || !Array.isArray(result.filePaths)) {
+      return [];
+    }
+
+    const collect = [];
+    const walk = (p) => {
+      try {
+        const st = fs.statSync(p);
+        if (st.isDirectory()) {
+          const items = fs.readdirSync(p);
+          for (const name of items) walk(path.join(p, name));
+        } else if (st.isFile()) {
+          collect.push({
+            path: p,
+            name: path.basename(p),
+            size: st.size,
+            lastModified: st.mtimeMs,
+          });
+        }
+      } catch (error) {
+        if (log?.warn) {
+          log.warn('Falha ao ler item selecionado', { path: p, error });
+        }
+      }
+    };
+
+    for (const p of result.filePaths) {
+      walk(p);
+    }
+
+    return collect;
+  } catch (error) {
+    if (log?.error) {
+      log.error('Erro no dialog-open-files', error);
+    }
+    return [];
+  }
+});

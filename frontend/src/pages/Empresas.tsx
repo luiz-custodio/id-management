@@ -4,6 +4,8 @@ import { useFileAnalysisWorker } from '../hooks/useFileAnalysisWorker';
 import type { FileAnalysisResult } from '../workers/types';
 import { api } from '../lib/api';
 import type { Empresa, Unidade } from '../lib/api';
+import { extractYearMonthFromPath } from '../utils/extractYearMonthFromPath';
+import { getFileSourcePath, rememberSourcePath } from '../utils/fileSource';
 
 // Importar função de criar unidade
 const { criarUnidade } = api;
@@ -132,7 +134,6 @@ const EmpresasPage: React.FC = () => {
   // UI compacto: controlar exibição da lista detalhada de arquivos
   const [mostrarListaArquivos, setMostrarListaArquivos] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   // Ordenação
   const [sortBy, setSortBy] = useState<'id' | 'nome'>('id');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -210,31 +211,87 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
+  const base64ToUint8Array = (base64: string): Uint8Array => {
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+      const binaryString = window.atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    }
+    return new Uint8Array();
+  };
+
+  const buildFilesFromMetas = async (
+    metas: Array<{ path: string; name: string; size?: number; lastModified?: number }>
+  ): Promise<File[]> => {
+    if (
+      !metas?.length ||
+      typeof window === 'undefined' ||
+      !window.electronAPI?.readFiles
+    ) {
+      return [];
+    }
+    try {
+      const contents = await window.electronAPI.readFiles(metas.map(meta => meta.path));
+      const contentMap = new Map<
+        string,
+        { contentBase64?: string; size?: number; lastModified?: number }
+      >();
+      contents?.forEach(item => {
+        if (item?.path) {
+          contentMap.set(item.path, {
+            contentBase64: item.contentBase64,
+            size: item.size,
+            lastModified: item.lastModified
+          });
+        }
+      });
+
+      return metas
+        .map(meta => {
+          const info = contentMap.get(meta.path);
+          if (!info?.contentBase64) return null;
+          const bytes = base64ToUint8Array(info.contentBase64);
+          const file = new File([bytes], meta.name, {
+            lastModified: Math.round(info.lastModified ?? meta.lastModified ?? Date.now())
+          });
+          rememberSourcePath(file, meta.path);
+          return file;
+        })
+        .filter((file): file is File => Boolean(file));
+    } catch {
+      return [];
+    }
+  };
+
+  const extractMesAnoFromFilePath = (file: File): string => {
+    try {
+      const rawPath = getFileSourcePath(file);
+      if (!rawPath) return '';
+      return extractYearMonthFromPath(rawPath);
+    } catch {
+      return '';
+    }
+  };
+
   // Helper: computa AAAA-MM a partir dos arquivos selecionados
   const computeAutoMesAnoFromFiles = (files: File[], mode: 'mod'|'mod-1'|'folder'): string => {
     try {
       if (!files || files.length === 0) return '';
       if (mode === 'folder') {
-        const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
-        const extractFromPath = (file: File): string => {
-          const anyFile: any = file as any;
-          const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
-          if (!pRaw) return '';
-          const p = pRaw.replace(/\\/g, '/');
-          const segs = p.split('/').filter(Boolean);
-          for (let i = segs.length - 2; i >= 0; i--) {
-            const seg = segs[i];
-            const m = seg.match(folderPattern);
-            if (m) return `${m[1]}-${m[2]}`;
-          }
-          return '';
-        };
         const values = new Set<string>();
         for (const f of files) {
-          const v = extractFromPath(f);
+          const v = extractMesAnoFromFilePath(f);
           if (v) values.add(v);
         }
-        return values.size === 1 ? Array.from(values)[0] : '';
+        if (values.size === 1) {
+          const [unique] = Array.from(values);
+          return unique ?? '';
+        }
+        return '';
       } else {
         // Usa o arquivo mais recente (modificação mais nova) do lote
         let latest = files[0].lastModified || Date.now();
@@ -256,19 +313,7 @@ const EmpresasPage: React.FC = () => {
   const computeMesAnoForFile = (file: File, mode: 'mod'|'mod-1'|'folder'): string => {
     try {
       if (mode === 'folder') {
-        const anyFile: any = file as any;
-        const pRaw: string = (anyFile.webkitRelativePath || anyFile.path || '').toString();
-        if (pRaw) {
-          const p = pRaw.replace(/\\/g, '/');
-          const segs = p.split('/').filter(Boolean);
-          const folderPattern = /^\s*(\d{4})\s*[-_\s]?\s*(\d{2})\s*$/;
-          for (let i = segs.length - 2; i >= 0; i--) {
-            const seg = segs[i];
-            const m = seg.match(folderPattern);
-            if (m) return `${m[1]}-${m[2]}`;
-          }
-        }
-        return '';
+        return extractMesAnoFromFilePath(file);
       }
       const d = new Date(file.lastModified || Date.now());
       if (mode === 'mod-1') d.setMonth(d.getMonth() - 1);
@@ -746,22 +791,97 @@ const EmpresasPage: React.FC = () => {
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const files = Array.from(e.dataTransfer.files);
-      adicionarArquivos(files);
+    const dropped = Array.from(e.dataTransfer.files);
+    if (!dropped.length) {
+      return;
     }
+
+    const pathSet = new Set<string>();
+    dropped.forEach(file => {
+      const anyFile = file as any;
+      const src = (anyFile?.path || '').toString();
+      if (src) {
+        pathSet.add(src);
+        rememberSourcePath(file, src);
+      }
+    });
+
+    if (
+      pathSet.size &&
+      typeof window !== 'undefined' &&
+      window.electronAPI?.expandDroppedPaths
+    ) {
+      try {
+        const metas = await window.electronAPI.expandDroppedPaths(Array.from(pathSet));
+        const uniqueMetasMap = new Map<string, { path: string; name: string; size?: number; lastModified?: number }>();
+        if (Array.isArray(metas)) {
+          metas.forEach(meta => {
+            if (meta?.path && meta?.name && !uniqueMetasMap.has(meta.path)) {
+              uniqueMetasMap.set(meta.path, meta);
+            }
+          });
+        }
+        const expandedFiles = await buildFilesFromMetas(Array.from(uniqueMetasMap.values()));
+        if (expandedFiles.length) {
+          adicionarArquivos(expandedFiles);
+          return;
+        }
+      } catch {
+        // fallback to default behavior below
+      }
+    }
+
+    const normalized = dropped.map(file => {
+      const anyFile = file as any;
+      const source = (anyFile?.path || anyFile?.webkitRelativePath || '').toString();
+      if (source) {
+        rememberSourcePath(file, source);
+      }
+      return file;
+    });
+
+    adicionarArquivos(normalized);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
       adicionarArquivos(files);
+      e.target.value = '';
     }
+  };
+
+  const handleSelectFilesClick = async () => {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI?.openFileDialog &&
+      window.electronAPI?.readFiles
+    ) {
+      try {
+        const metas = await window.electronAPI.openFileDialog({
+          allowDirectories: true,
+          filters: [
+            { name: 'Documentos', extensions: ['pdf', 'xlsx', 'xlsm', 'csv', 'docx', 'xml'] },
+          ],
+        });
+        if (Array.isArray(metas) && metas.length) {
+          const files = await buildFilesFromMetas(metas);
+          if (files.length) {
+            adicionarArquivos(files);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao selecionar arquivos via diálogo', error);
+      }
+    }
+
+    fileInputRef.current?.click();
   };
 
   // Função unificada para adicionar arquivos com análise automática
@@ -770,7 +890,16 @@ const EmpresasPage: React.FC = () => {
       return;
     }
 
-    setSelectedFiles(prev => [...prev, ...files]);
+    const normalized = files.map(file => {
+      const anyFile = file as any;
+      const source = (anyFile?.__sourcePath || anyFile?.webkitRelativePath || anyFile?.path || '').toString();
+      if (source) {
+        rememberSourcePath(file, source);
+      }
+      return file;
+    });
+
+    setSelectedFiles(prev => [...prev, ...normalized]);
 
     if (autoDeteccao) {
       setArquivosAnalisados([]);
@@ -1418,7 +1547,7 @@ const EmpresasPage: React.FC = () => {
             accept=".pdf,.xlsx,.xlsm,.csv,.docx,.xml"
           />
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleSelectFilesClick}
             className="bg-blue-700/90 hover:bg-blue-700 px-3 py-1 rounded text-sm transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg shadow-blue-700/25 border border-blue-600/50"
           >
             Selecionar Arquivos

@@ -5,6 +5,7 @@ import type {
   FileAnalysisResult,
   SerializableWorkerFile,
 } from '../workers/types';
+import { getFileSourcePath } from '../utils/fileSource';
 
 type AnalyzeOptions = {
   files: File[];
@@ -26,13 +27,14 @@ type WorkerResult = {
 
 function toSerializable(files: File[]): SerializableWorkerFile[] {
   return files.map((file, index) => {
-    const anyFile = file as unknown as { path?: string; webkitRelativePath?: string };
+    const path = getFileSourcePath(file);
+    const anyFile = file as unknown as { webkitRelativePath?: string };
     return {
       index,
       name: file.name,
       lastModified: file.lastModified,
       size: file.size,
-      path: anyFile.path,
+      path: path || undefined,
       webkitRelativePath: anyFile.webkitRelativePath,
     };
   });

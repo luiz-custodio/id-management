@@ -28,6 +28,12 @@ declare global {
       expandDroppedPaths?: (paths: string[]) => Promise<Array<{ path: string; name: string; size: number; lastModified: number }>>;
       // Read files content by absolute path (Electron only)
       readFiles?: (paths: string[]) => Promise<Array<{ path: string; name: string; size: number; lastModified: number; contentBase64: string }>>;
+      // Open dialog to pick files (and optionally directories)
+      openFileDialog?: (options?: {
+        title?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+        allowDirectories?: boolean;
+      }) => Promise<Array<{ path: string; name: string; size: number; lastModified: number }>>;
       
       platform: string;
       version: string;

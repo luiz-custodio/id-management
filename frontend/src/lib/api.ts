@@ -1,3 +1,5 @@
+import { getFileSourcePath } from '../utils/fileSource';
+
 // Resolve dinamicamente a base da API (Electron ou Web)
 async function apiBase(): Promise<string> {
   try {
@@ -62,74 +64,6 @@ export type UploadResponse = {
   empresa_info: string;
   unidade_info: string;
   message: string;
-};
-
-// Tipos para organização em lote
-export type BatchFileItem = {
-  name: string;
-  path: string;
-  size: number;
-  is_detected: boolean;
-  detected_type?: string;
-  target_folder?: string;
-  new_name?: string;
-  source_folder?: string;
-};
-
-export type BatchAnalysisRequest = {
-  empresa_id: number;
-  unidade_id: number;
-  files: Array<{
-    name: string;
-    path: string;
-    size: number;
-  }>;
-};
-
-export type BatchAnalysisResponse = {
-  detected_files: BatchFileItem[];
-  undetected_files: BatchFileItem[];
-  empresa_info: string;
-  unidade_info: string;
-  base_path: string;
-};
-
-export type BatchProcessingOperation = {
-  original_name: string;
-  new_name: string;
-  source_path: string;
-  target_path: string;
-  folder_name: string;
-};
-
-export type BatchProcessRequest = {
-  empresa_id: number;
-  unidade_id: number;
-  operations: BatchProcessingOperation[];
-};
-
-export type BatchProcessingResult = {
-  original_name: string;
-  new_name: string;
-  target_path: string;
-  success: boolean;
-  error?: string;
-};
-
-export type BatchProcessResponse = {
-  results: BatchProcessingResult[];
-  total_files: number;
-  successful_files: number;
-  empresa_info: string;
-  unidade_info: string;
-};
-
-export type FolderStructure = {
-  id: string;
-  name: string;
-  path: string;
-  description: string;
-  types: string[];
 };
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -378,6 +312,10 @@ export const api = {
       formData.append('files', item.file);
       formData.append(`tipo_${index}`, item.tipoDetectado);
       formData.append(`data_${index}`, item.dataDetectada);
+      const sourcePath = getFileSourcePath(item.file);
+      if (sourcePath) {
+        formData.append(`source_${index}`, sourcePath);
+      }
     });
 
     const BASE = await apiBase();
@@ -430,6 +368,10 @@ export const api = {
       formData.append('files', item.file);
       formData.append(`tipo_${index}`, item.tipoDetectado);
       formData.append(`data_${index}`, item.dataDetectada);
+      const sourcePath = getFileSourcePath(item.file);
+      if (sourcePath) {
+        formData.append(`source_${index}`, sourcePath);
+      }
     });
 
     const BASE = await apiBase();
@@ -455,82 +397,6 @@ export const api = {
     }
 
     return response.json();
-  },
-
-  // ==========================================
-  // APIS PARA ORGANIZAÇÃO EM LOTE
-  // ==========================================
-  async batchAnalyzeFiles(request: BatchAnalysisRequest): Promise<BatchAnalysisResponse> {
-    return http<BatchAnalysisResponse>("/batch/analyze", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  },
-  
-  async batchProcessFiles(request: BatchProcessRequest): Promise<BatchProcessResponse> {
-    return http<BatchProcessResponse>("/batch/process", {
-      method: "POST",
-      body: JSON.stringify(request),
-    });
-  },
-
-  async batchProcessFilesUpload(
-    empresaId: number,
-    unidadeId: number,
-    fileTargets: Array<{ original_name: string; new_name: string; target_path: string }>,
-    files: File[],
-    opts?: { onProgress?: (percent: number) => void; conflictStrategy?: 'overwrite'|'version'|'skip' }
-  ): Promise<BatchProcessResponse> {
-    const form = new FormData();
-    form.append('empresa_id', String(empresaId));
-    form.append('unidade_id', String(unidadeId));
-    form.append('file_targets_json', JSON.stringify(fileTargets));
-    if (opts?.conflictStrategy) form.append('conflict_strategy', opts.conflictStrategy);
-    files.forEach((f) => form.append('files', f));
-    const BASE = await apiBase();
-
-    // Se foi pedido progresso, usa XHR para obter upload progress
-    if (opts?.onProgress) {
-      return new Promise((resolve, reject) => {
-        try {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', `${BASE}/batch/process-upload`);
-          xhr.onload = () => {
-            try {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(JSON.parse(xhr.responseText));
-              } else {
-                reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
-              }
-            } catch (e) {
-              reject(e);
-            }
-          };
-          xhr.onerror = () => reject(new Error('Falha de rede no upload'));
-          xhr.upload.onprogress = (evt) => {
-            if (evt.lengthComputable) {
-              const percent = Math.round((evt.loaded / evt.total) * 100);
-              opts.onProgress?.(percent);
-            }
-          };
-          xhr.send(form);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    }
-
-    // Sem progresso, usa fetch
-    const r = await fetch(`${BASE}/batch/process-upload`, { method: 'POST', body: form });
-    if (!r.ok) {
-      const msg = await r.text().catch(() => '');
-      throw new Error(msg || 'Erro ao processar upload em lote');
-    }
-    return r.json();
-  },
-  
-  async batchGetFolders(): Promise<{ folders: FolderStructure[] }> {
-    return http<{ folders: FolderStructure[] }>("/batch/folders");
   },
 
   async obterEmailConfig(): Promise<EmailConfig> {

@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   expandDroppedPaths: (paths) => ipcRenderer.invoke('fs-expand-dropped', paths),
   // Ler bytes de arquivos por caminho absoluto (usado no processamento em lote via upload)
   readFiles: (paths) => ipcRenderer.invoke('fs-read-files', paths),
+  // Abrir diálogo de seleção de arquivos/pastas
+  openFileDialog: (options) => ipcRenderer.invoke('dialog-open-files', options),
   
   // Informações do sistema
   platform: process.platform,
