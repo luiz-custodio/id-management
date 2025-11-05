@@ -56,6 +56,41 @@ except ImportError as e:
     DOCKER_AVAILABLE = False
     postgres_manager = None
 
+def normalize_single_unit_ids() -> None:
+    """Garante que empresas com apenas uma unidade usem sempre o código 001."""
+    db = SessionLocal()
+    ajustes = 0
+    try:
+        empresas = (
+            db.query(models.Empresa)
+            .options(joinedload(models.Empresa.unidades))
+            .all()
+        )
+        for empresa in empresas:
+            unidades = list(empresa.unidades)
+            if len(unidades) != 1:
+                continue
+            unidade = unidades[0]
+            if unidade.id_unidade == "001":
+                continue
+            logger.info(
+                "Normalizando unidade %s (%s) de %s para 001",
+                empresa.id_empresa,
+                unidade.id_unidade,
+                empresa.nome,
+            )
+            unidade.id_unidade = "001"
+            ajustes += 1
+        if ajustes:
+            db.commit()
+            logger.info("%d unidade(s) ajustada(s) para 001.", ajustes)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Falha ao normalizar unidades: %s", exc)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -83,7 +118,10 @@ async def lifespan(app: FastAPI):
         logger.info(f"✅ Tabelas criadas/verificadas no {db_info['type'].upper()}")
     except Exception as e:
         logger.error(f"❌ Erro ao criar tabelas: {e}")
-    
+
+    # Corrige unidades com numeração inicial incorreta (ex.: apenas "002")
+    normalize_single_unit_ids()
+
     yield
     
     # Shutdown: Para PostgreSQL se necessário (opcional)
