@@ -20,7 +20,7 @@ const os = require('os');
 
 // Configuração do servidor padrão
 const DEFAULT_SERVER_CONFIG = {
-  host: '192.168.1.103',
+  host: '192.168.1.101',
   port: 8000,
   protocol: 'http'
 };
