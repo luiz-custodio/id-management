@@ -111,7 +111,7 @@ const TitleBar: React.FC = () => {
           <span className="hidden sm:inline">Servidor:</span>
           <button
             onClick={handleEditIpSuffix}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-100 border border-slate-600 hover:border-blue-500 transition-colors"
+            className="electron-no-drag flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-100 border border-slate-600 hover:border-blue-500 transition-colors"
             title="Editar apenas o último número do IP"
           >
             <span className="font-mono">{ipPrefix || '192.168.1'}.{ipSuffix || 'x'}</span>
