@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, X, Pin, PinOff, Monitor, RefreshCw } from 'lucide-react';
+import { Minus, X, Pin, PinOff, Monitor, RefreshCw, Edit2 } from 'lucide-react';
 
 const TitleBar: React.FC = () => {
   const [isPinned, setIsPinned] = useState(false);
   const [showSizeMenu, setShowSizeMenu] = useState(false);
   const [sizes, setSizes] = useState<Record<string, { width: number; height: number; name: string }>>({});
   const [currentSize, setCurrentSize] = useState('medium');
+  const [ipPrefix, setIpPrefix] = useState('');
+  const [ipSuffix, setIpSuffix] = useState('');
 
   useEffect(() => {
     if (window.electronAPI) {
@@ -13,6 +15,22 @@ const TitleBar: React.FC = () => {
       window.electronAPI.windowGetSizes().then(({ sizes, current }) => {
         setSizes(sizes);
         setCurrentSize(current);
+      });
+
+      // Carregar host atual e separar prefixo/último octeto
+      window.electronAPI.getServerConfig().then((cfg) => {
+        const host = (cfg?.host || '').trim();
+        const parts = host.split('.');
+        if (parts.length === 4) {
+          setIpPrefix(parts.slice(0, 3).join('.'));
+          setIpSuffix(parts[3]);
+        } else {
+          setIpPrefix('192.168.1');
+          setIpSuffix('');
+        }
+      }).catch(() => {
+        setIpPrefix('192.168.1');
+        setIpSuffix('');
       });
     }
   }, []);
@@ -42,6 +60,29 @@ const TitleBar: React.FC = () => {
     }
   };
 
+  const handleEditIpSuffix = async () => {
+    if (!window.electronAPI) return;
+    const base = ipPrefix || '192.168.1';
+    const current = ipSuffix || '';
+    const input = window.prompt(`Informe apenas o último bloco do IP (${base}.X)`, current);
+    if (input === null) return;
+    const trimmed = input.trim();
+    const parsed = Number(trimmed);
+    if (!trimmed || Number.isNaN(parsed) || parsed < 0 || parsed > 255) {
+      window.alert('Valor inválido. Digite um número entre 0 e 255.');
+      return;
+    }
+    const normalized = String(Math.trunc(parsed));
+    const host = `${base}.${normalized}`;
+    try {
+      await window.electronAPI.setServerConfig({ host });
+      setIpSuffix(normalized);
+    } catch (error) {
+      console.error('Falha ao salvar IP', error);
+      window.alert('Não foi possível salvar o IP. Tente novamente.');
+    }
+  };
+
   const handleSizeChange = async (sizeKey: string) => {
     if (window.electronAPI) {
       const result = await window.electronAPI.windowResize(sizeKey);
@@ -66,6 +107,17 @@ const TitleBar: React.FC = () => {
           BM
         </div>
         Sistema de Gerenciamento de IDs
+        <div className="ml-3 flex items-center gap-2 text-xs text-slate-300 electron-no-drag">
+          <span className="hidden sm:inline">Servidor:</span>
+          <button
+            onClick={handleEditIpSuffix}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-100 border border-slate-600 hover:border-blue-500 transition-colors"
+            title="Editar apenas o último número do IP"
+          >
+            <span className="font-mono">{ipPrefix || '192.168.1'}.{ipSuffix || 'x'}</span>
+            <Edit2 size={12} />
+          </button>
+        </div>
       </div>
 
       {/* Controles da janela */}
