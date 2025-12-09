@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, X, Pin, PinOff, Monitor, RefreshCw, Edit2 } from 'lucide-react';
+import { Minus, X, Pin, PinOff, Monitor, RefreshCw, Settings } from 'lucide-react';
 
 const TitleBar: React.FC = () => {
   const [isPinned, setIsPinned] = useState(false);
@@ -100,24 +100,25 @@ const TitleBar: React.FC = () => {
 
   return (
     <div className="fixed top-0 left-0 right-0 h-8 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-4 z-50">
-      
-      {/* Título */}
-      <div className="flex-1 flex items-center gap-2 text-white text-sm font-medium electron-drag select-none h-full">
-        <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center text-xs font-bold">
-          BM
+      {/* Área de título arrastável */}
+      <div className="flex-1 flex items-center gap-3 h-full">
+        <div className="electron-drag flex items-center gap-2 text-white text-sm font-medium select-none h-full">
+          <div className="w-4 h-4 bg-blue-600 rounded flex items-center justify-center text-xs font-bold">
+            BM
+          </div>
+          Sistema de Gerenciamento de IDs
         </div>
-        Sistema de Gerenciamento de IDs
-        <div className="ml-3 flex items-center gap-2 text-xs text-slate-300 electron-no-drag">
+        {/* Botão de configuração do servidor (fora da área de drag) */}
+        <button
+          onClick={handleEditIpSuffix}
+          className="electron-no-drag flex items-center gap-2 text-xs text-slate-200 bg-slate-800/80 hover:bg-slate-700/90 px-2 py-1 rounded border border-slate-700 hover:border-blue-500 transition-colors"
+          title="Clique para editar o IP do servidor"
+          type="button"
+        >
           <span className="hidden sm:inline">Servidor:</span>
-          <button
-            onClick={handleEditIpSuffix}
-            className="electron-no-drag flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-100 border border-slate-600 hover:border-blue-500 transition-colors"
-            title="Editar apenas o último número do IP"
-          >
-            <span className="font-mono">{ipPrefix || '192.168.1'}.{ipSuffix || 'x'}</span>
-            <Edit2 size={12} />
-          </button>
-        </div>
+          <span className="font-mono bg-slate-900 px-2 py-1 rounded border border-slate-700 text-blue-100">{ipPrefix || '192.168.1'}.{ipSuffix || 'x'}</span>
+          <Settings size={14} />
+        </button>
       </div>
 
       {/* Controles da janela */}

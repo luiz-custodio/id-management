@@ -20,16 +20,16 @@ const os = require('os');
 
 // Configuração do servidor padrão
 const DEFAULT_SERVER_CONFIG = {
-  host: '192.168.1.55',
+  host: '192.168.1.101',
   port: 8000,
   protocol: 'http'
 };
 
 // Tamanhos predefinidos da janela
 const WINDOW_SIZES = {
-  small: { width: 900, height: 600, name: 'Pequeno' },
-  medium: { width: 1057, height: 600, name: 'Médio' },
-  large: { width: 1400, height: 900, name: 'Grande' }
+  small: { width: 1000, height: 700, name: 'Pequeno' },
+  medium: { width: 1157, height: 700, name: 'Médio' },
+  large: { width: 1500, height: 1000, name: 'Grande' }
 };
 
 // Caminho do arquivo de configuração persistente
