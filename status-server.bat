@@ -8,31 +8,20 @@ echo   STATUS DO SERVIDOR ID MANAGEMENT
 echo ========================================
 echo.
 
-REM Verificar Docker
-echo 🐳 Docker:
-docker version >nul 2>&1
-if errorlevel 1 (
-    echo    ❌ Nao rodando
+echo 🗄️  Banco de Dados:
+if exist "%~dp0backend\ids.db" (
+    echo    ✅ SQLite (ids.db) encontrado
 ) else (
-    echo    ✅ Funcionando
-)
-
-echo.
-echo 🗄️  PostgreSQL:
-docker ps | findstr "postgres" >nul
-if errorlevel 1 (
-    echo    ❌ Parado
-) else (
-    echo    ✅ Rodando
+    echo    ⚠️  SQLite (ids.db) nao encontrado
 )
 
 echo.
 echo 🔧 Backend API:
-curl -s http://192.168.1.52:8000/health >nul 2>&1
+curl -s http://127.0.0.1:8000/health >nul 2>&1
 if errorlevel 1 (
     echo    ❌ Offline
 ) else (
-    echo    ✅ Online - http://192.168.1.52:8000
+    echo    ✅ Online - http://127.0.0.1:8000
 )
 
 echo.
