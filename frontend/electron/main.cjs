@@ -18,9 +18,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Configuração do servidor padrão (localhost para desenvolvimento)
+// Configuração do servidor padrão (IP na rede local)
 const DEFAULT_SERVER_CONFIG = {
-  host: '127.0.0.1',
+  host: '192.168.1.209',
   port: 8000,
   protocol: 'http'
 };
